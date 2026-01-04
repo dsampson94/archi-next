@@ -123,7 +123,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
         entity: 'Document',
         entityId: document.id,
         oldValues: { title: existing.title, description: existing.description },
-        newValues: updateData,
+        newValues: updateData as any,
         tenantId: auth.tenantId,
         userId: auth.userId,
       },

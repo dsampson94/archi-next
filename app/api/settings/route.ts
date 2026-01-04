@@ -41,8 +41,9 @@ export async function GET() {
       select: {
         id: true,
         name: true,
-        subdomain: true,
-        settings: true,
+        slug: true,
+        logoUrl: true,
+        primaryColor: true,
       },
     });
 
@@ -50,21 +51,20 @@ export async function GET() {
       return NextResponse.json({ error: 'Tenant not found' }, { status: 404 });
     }
 
-    // Parse settings JSON
-    const settings = tenant.settings as Record<string, unknown> || {};
-
     return NextResponse.json({
       name: tenant.name,
-      subdomain: tenant.subdomain || '',
-      timezone: settings.timezone || 'Africa/Johannesburg',
-      billingEmail: settings.billingEmail || user.email,
-      notifications: settings.notifications || {
+      slug: tenant.slug || '',
+      logoUrl: tenant.logoUrl || '',
+      primaryColor: tenant.primaryColor || '#14b8a6',
+      timezone: 'Africa/Johannesburg',
+      billingEmail: user.email,
+      notifications: {
         emailOnHandoff: true,
         emailDailyDigest: false,
         emailWeeklyReport: true,
       },
-      branding: settings.branding || {
-        primaryColor: '#10B981',
+      branding: {
+        primaryColor: tenant.primaryColor || '#10B981',
         welcomeMessage: 'Hello! How can I help you today?',
       },
     });
@@ -87,18 +87,18 @@ export async function PUT(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { name, subdomain, timezone, billingEmail, notifications, branding } = body;
+    const { name, slug, logoUrl, primaryColor } = body;
 
-    // Check subdomain uniqueness if changed
-    if (subdomain) {
+    // Check slug uniqueness if changed
+    if (slug) {
       const existingTenant = await prisma.tenant.findFirst({
         where: {
-          subdomain,
+          slug,
           NOT: { id: user.tenantId },
         },
       });
       if (existingTenant) {
-        return NextResponse.json({ error: 'Subdomain already taken' }, { status: 400 });
+        return NextResponse.json({ error: 'Slug already taken' }, { status: 400 });
       }
     }
 
@@ -107,13 +107,9 @@ export async function PUT(request: NextRequest) {
       where: { id: user.tenantId },
       data: {
         name: name || undefined,
-        subdomain: subdomain || undefined,
-        settings: {
-          timezone,
-          billingEmail,
-          notifications,
-          branding,
-        },
+        slug: slug || undefined,
+        logoUrl: logoUrl || undefined,
+        primaryColor: primaryColor || undefined,
       },
     });
 
@@ -121,7 +117,9 @@ export async function PUT(request: NextRequest) {
       success: true,
       tenant: {
         name: updatedTenant.name,
-        subdomain: updatedTenant.subdomain,
+        slug: updatedTenant.slug,
+        logoUrl: updatedTenant.logoUrl,
+        primaryColor: updatedTenant.primaryColor,
       },
     });
   } catch (error) {

@@ -325,6 +325,9 @@ model Message {
   humanAgentId    String?
   humanAgent      User?    @relation(fields: [humanAgentId], references: [id])
   
+  // Metadata
+  metadata        Json?
+  
   // Relations
   conversationId  String
   conversation    Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)

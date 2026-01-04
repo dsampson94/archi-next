@@ -14,7 +14,7 @@ export const getIndex = () => {
 // Namespace format: tenant_{tenantId}
 export const getTenantNamespace = (tenantId: string) => `tenant_${tenantId}`;
 
-export interface VectorMetadata {
+export interface VectorMetadata extends RecordMetadata {
   documentId: string;
   chunkId: string;
   chunkIndex: number;
@@ -22,6 +22,7 @@ export interface VectorMetadata {
   documentTitle: string;
   pageNumber?: number;
   tenantId: string;
+  [key: string]: any;
 }
 
 export interface UpsertVectorParams {

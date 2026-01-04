@@ -73,21 +73,10 @@ export async function GET(request: NextRequest) {
     ]);
 
     return NextResponse.json({
-      conversations: conversations.map((c: {
-        id: string;
-        externalUserId: string;
-        externalUserName: string | null;
-        channel: string;
-        status: string;
-        isHandedOff: boolean;
-        updatedAt: Date;
-        _count: { messages: number };
-        messages: Array<{ createdAt: Date }>;
-      }) => ({
+      conversations: conversations.map((c) => ({
         id: c.id,
         externalUserId: c.externalUserId,
         externalUserName: c.externalUserName,
-        channel: c.channel,
         status: c.status,
         isHandedOff: c.isHandedOff,
         lastMessageAt: c.messages[0]?.createdAt || c.updatedAt,

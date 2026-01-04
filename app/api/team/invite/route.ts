@@ -89,10 +89,9 @@ export async function POST(request: NextRequest) {
       data: {
         email,
         name,
-        password: hashedPassword,
+        passwordHash: hashedPassword,
         role,
         tenantId: user.tenantId,
-        isActive: true,
       },
       select: {
         id: true,
@@ -185,17 +184,16 @@ export async function DELETE(request: NextRequest) {
     }
 
     // Prevent removing owners
-    if (member.role === 'owner') {
+    if (member.role === 'OWNER') {
       return NextResponse.json(
         { error: 'Cannot remove the account owner' },
         { status: 400 }
       );
     }
 
-    // Deactivate the user (soft delete)
-    await prisma.user.update({
+    // Delete the user
+    await prisma.user.delete({
       where: { id: memberId },
-      data: { isActive: false },
     });
 
     // Create audit log
@@ -273,7 +271,7 @@ export async function PATCH(request: NextRequest) {
     }
 
     // Prevent changing owner role
-    if (member.role === 'owner') {
+    if (member.role === 'OWNER') {
       return NextResponse.json(
         { error: 'Cannot change the role of the account owner' },
         { status: 400 }
