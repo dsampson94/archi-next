@@ -223,6 +223,8 @@ model Agent {
   
   // Agent Configuration
   systemPrompt    String   @db.Text
+  responseRules   String?  @db.Text
+  tone            String?  @default("professional")
   temperature     Float    @default(0.7)
   model           String   @default("gpt-4-turbo-preview")
   
@@ -231,7 +233,9 @@ model Agent {
   confidenceThreshold Float @default(0.7) // Below this, escalate to human
   
   // Greeting & Fallbacks
+  greeting        String?
   greetingMessage String?
+  handoffMessage  String?
   fallbackMessage String?  @default("I'm not sure about that. Let me connect you with someone who can help.")
   
   // Status
