@@ -72,19 +72,19 @@ export async function GET(request: NextRequest) {
     let responseCount = 0;
 
     interface MessageType {
-      role: string;
+      senderType: string;
       createdAt: Date;
       content: string | null;
     }
 
     for (const conv of conversations) {
-      const userMessages = conv.messages.filter((m: MessageType) => m.role === 'user');
-      const assistantMessages = conv.messages.filter((m: MessageType) => m.role === 'assistant');
+      const userMessages = conv.messages.filter((m: MessageType) => m.senderType === 'USER');
+      const assistantMessages = conv.messages.filter((m: MessageType) => m.senderType === 'AI' || m.senderType === 'HUMAN');
       
       totalQueries += userMessages.length;
       answeredByAI += assistantMessages.length;
       
-      if (conv.status === 'handed_off') {
+      if (conv.status === 'HANDED_OFF') {
         handedOff++;
       }
 
@@ -92,7 +92,7 @@ export async function GET(request: NextRequest) {
       for (let i = 0; i < conv.messages.length - 1; i++) {
         const current = conv.messages[i] as MessageType;
         const next = conv.messages[i + 1] as MessageType;
-        if (current.role === 'user' && next.role === 'assistant') {
+        if (current.senderType === 'USER' && (next.senderType === 'AI' || next.senderType === 'HUMAN')) {
           const time = next.createdAt.getTime() - current.createdAt.getTime();
           totalResponseTime += time;
           responseCount++;
@@ -110,11 +110,11 @@ export async function GET(request: NextRequest) {
       if (!dailyMap[dateKey]) {
         dailyMap[dateKey] = { queries: 0, answered: 0, handedOff: 0 };
       }
-      const userMsgs = conv.messages.filter((m: MessageType) => m.role === 'user').length;
-      const assistantMsgs = conv.messages.filter((m: MessageType) => m.role === 'assistant').length;
+      const userMsgs = conv.messages.filter((m: MessageType) => m.senderType === 'USER').length;
+      const assistantMsgs = conv.messages.filter((m: MessageType) => m.senderType === 'AI' || m.senderType === 'HUMAN').length;
       dailyMap[dateKey].queries += userMsgs;
       dailyMap[dateKey].answered += assistantMsgs;
-      if (conv.status === 'handed_off') {
+      if (conv.status === 'HANDED_OFF') {
         dailyMap[dateKey].handedOff++;
       }
     }
@@ -127,7 +127,7 @@ export async function GET(request: NextRequest) {
     const queryCount: Record<string, { count: number; totalConfidence: number }> = {};
     for (const conv of conversations) {
       for (const msg of conv.messages) {
-        if (msg.role === 'user' && msg.content) {
+        if (msg.senderType === 'USER' && msg.content) {
           const normalized = msg.content.toLowerCase().trim().slice(0, 100);
           if (!queryCount[normalized]) {
             queryCount[normalized] = { count: 0, totalConfidence: 0 };
