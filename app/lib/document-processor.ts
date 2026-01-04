@@ -1,0 +1,338 @@
+import { prisma } from '@/app/lib/prisma';
+import { generateEmbeddings } from '@/app/lib/openai';
+import { upsertVectors, deleteDocumentVectors, type VectorMetadata } from '@/app/lib/pinecone';
+import pdf from 'pdf-parse';
+
+// Chunking configuration
+const CHUNK_SIZE = 800; // tokens (roughly 4 chars per token)
+const CHUNK_OVERLAP = 200; // tokens
+const CHARS_PER_TOKEN = 4;
+
+export interface ProcessDocumentResult {
+  success: boolean;
+  chunkCount: number;
+  error?: string;
+}
+
+/**
+ * Main document processing pipeline
+ */
+export async function processDocument(
+  documentId: string
+): Promise<ProcessDocumentResult> {
+  console.log(`[DocumentProcessor] Starting processing for document ${documentId}`);
+  
+  try {
+    // Get document from database
+    const document = await prisma.document.findUnique({
+      where: { id: documentId },
+      include: { tenant: true },
+    });
+    
+    if (!document) {
+      throw new Error(`Document ${documentId} not found`);
+    }
+    
+    // Update status to processing
+    await prisma.document.update({
+      where: { id: documentId },
+      data: { status: 'PROCESSING' },
+    });
+    
+    // Extract text based on file type
+    let rawContent: string;
+    
+    if (document.fileUrl) {
+      rawContent = await extractTextFromUrl(document.fileUrl, document.fileType);
+    } else if (document.rawContent) {
+      rawContent = document.rawContent;
+    } else {
+      throw new Error('No content available for processing');
+    }
+    
+    // Chunk the content
+    const chunks = chunkText(rawContent, document.title);
+    console.log(`[DocumentProcessor] Created ${chunks.length} chunks`);
+    
+    // Generate embeddings for all chunks
+    const chunkTexts = chunks.map((c) => c.content);
+    const embeddings = await generateEmbeddings(chunkTexts);
+    console.log(`[DocumentProcessor] Generated ${embeddings.length} embeddings`);
+    
+    // Delete existing vectors for this document (in case of re-processing)
+    await deleteDocumentVectors(document.tenantId, documentId);
+    
+    // Store chunks in database and prepare vectors for Pinecone
+    const vectors: { id: string; values: number[]; metadata: VectorMetadata }[] = [];
+    
+    // Delete existing chunks
+    await prisma.documentChunk.deleteMany({
+      where: { documentId },
+    });
+    
+    // Create new chunks
+    for (let i = 0; i < chunks.length; i++) {
+      const chunk = chunks[i];
+      const chunkId = `${documentId}_chunk_${i}`;
+      
+      // Store in database
+      await prisma.documentChunk.create({
+        data: {
+          id: chunkId,
+          documentId,
+          content: chunk.content,
+          chunkIndex: i,
+          pageNumber: chunk.pageNumber,
+          startChar: chunk.startChar,
+          endChar: chunk.endChar,
+          embedding: embeddings[i],
+          metadata: {
+            title: document.title,
+            fileName: document.fileName,
+          },
+        },
+      });
+      
+      // Prepare for Pinecone
+      vectors.push({
+        id: chunkId,
+        values: embeddings[i],
+        metadata: {
+          documentId,
+          chunkId,
+          chunkIndex: i,
+          content: chunk.content,
+          documentTitle: document.title,
+          pageNumber: chunk.pageNumber,
+          tenantId: document.tenantId,
+        },
+      });
+    }
+    
+    // Upsert to Pinecone
+    await upsertVectors(document.tenantId, vectors);
+    
+    // Update document status
+    await prisma.document.update({
+      where: { id: documentId },
+      data: {
+        status: 'COMPLETED',
+        processedAt: new Date(),
+        chunkCount: chunks.length,
+        rawContent,
+      },
+    });
+    
+    console.log(`[DocumentProcessor] Successfully processed document ${documentId}`);
+    
+    return {
+      success: true,
+      chunkCount: chunks.length,
+    };
+  } catch (error) {
+    console.error(`[DocumentProcessor] Error processing document ${documentId}:`, error);
+    
+    // Update document with error status
+    await prisma.document.update({
+      where: { id: documentId },
+      data: {
+        status: 'FAILED',
+        errorMessage: error instanceof Error ? error.message : 'Unknown error',
+      },
+    });
+    
+    return {
+      success: false,
+      chunkCount: 0,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
+  }
+}
+
+/**
+ * Extract text from a file URL based on file type
+ */
+async function extractTextFromUrl(url: string, fileType: string): Promise<string> {
+  const response = await fetch(url);
+  
+  if (!response.ok) {
+    throw new Error(`Failed to fetch file: ${response.statusText}`);
+  }
+  
+  switch (fileType) {
+    case 'PDF': {
+      const buffer = Buffer.from(await response.arrayBuffer());
+      const data = await pdf(buffer);
+      return data.text;
+    }
+    
+    case 'TXT':
+    case 'MD':
+    case 'HTML': {
+      return await response.text();
+    }
+    
+    case 'DOCX': {
+      // For DOCX, we'd need mammoth or similar library
+      // For now, throw an error to indicate it's not supported yet
+      throw new Error('DOCX processing not yet implemented. Please upload as PDF or TXT.');
+    }
+    
+    case 'JSON': {
+      const json = await response.json();
+      return JSON.stringify(json, null, 2);
+    }
+    
+    default:
+      throw new Error(`Unsupported file type: ${fileType}`);
+  }
+}
+
+/**
+ * Extract text from a buffer (for direct uploads)
+ */
+export async function extractTextFromBuffer(
+  buffer: Buffer,
+  fileType: string
+): Promise<string> {
+  switch (fileType) {
+    case 'PDF': {
+      const data = await pdf(buffer);
+      return data.text;
+    }
+    
+    case 'TXT':
+    case 'MD':
+    case 'HTML': {
+      return buffer.toString('utf-8');
+    }
+    
+    case 'JSON': {
+      const json = JSON.parse(buffer.toString('utf-8'));
+      return JSON.stringify(json, null, 2);
+    }
+    
+    default:
+      throw new Error(`Unsupported file type: ${fileType}`);
+  }
+}
+
+interface TextChunk {
+  content: string;
+  pageNumber?: number;
+  startChar: number;
+  endChar: number;
+}
+
+/**
+ * Chunk text into overlapping segments
+ */
+function chunkText(text: string, documentTitle: string): TextChunk[] {
+  const chunks: TextChunk[] = [];
+  
+  // Clean the text
+  const cleanedText = text
+    .replace(/\r\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+  
+  if (!cleanedText) {
+    return [];
+  }
+  
+  const chunkSizeChars = CHUNK_SIZE * CHARS_PER_TOKEN;
+  const overlapChars = CHUNK_OVERLAP * CHARS_PER_TOKEN;
+  
+  let startIndex = 0;
+  let chunkIndex = 0;
+  
+  while (startIndex < cleanedText.length) {
+    // Calculate end index
+    let endIndex = startIndex + chunkSizeChars;
+    
+    // Try to break at a sentence boundary
+    if (endIndex < cleanedText.length) {
+      const searchStart = Math.max(startIndex + chunkSizeChars - 200, startIndex);
+      const searchEnd = Math.min(startIndex + chunkSizeChars + 200, cleanedText.length);
+      const searchText = cleanedText.slice(searchStart, searchEnd);
+      
+      // Look for sentence endings
+      const sentenceEndings = ['. ', '.\n', '? ', '?\n', '! ', '!\n'];
+      let bestBreak = -1;
+      
+      for (const ending of sentenceEndings) {
+        const idx = searchText.lastIndexOf(ending);
+        if (idx !== -1) {
+          const absoluteIdx = searchStart + idx + ending.length;
+          if (absoluteIdx > bestBreak && absoluteIdx > startIndex + 100) {
+            bestBreak = absoluteIdx;
+          }
+        }
+      }
+      
+      if (bestBreak !== -1) {
+        endIndex = bestBreak;
+      }
+    } else {
+      endIndex = cleanedText.length;
+    }
+    
+    const chunkContent = cleanedText.slice(startIndex, endIndex).trim();
+    
+    if (chunkContent.length > 50) { // Skip very small chunks
+      // Add document context to chunk
+      const contextualChunk = chunkIndex === 0
+        ? `Document: ${documentTitle}\n\n${chunkContent}`
+        : chunkContent;
+      
+      chunks.push({
+        content: contextualChunk,
+        startChar: startIndex,
+        endChar: endIndex,
+        pageNumber: estimatePageNumber(startIndex, cleanedText),
+      });
+    }
+    
+    // Move start index with overlap
+    startIndex = endIndex - overlapChars;
+    if (startIndex >= cleanedText.length - 100) {
+      break; // Avoid tiny trailing chunks
+    }
+    
+    chunkIndex++;
+  }
+  
+  return chunks;
+}
+
+/**
+ * Estimate page number based on character position
+ */
+function estimatePageNumber(charIndex: number, fullText: string): number {
+  // Rough estimate: ~2500 characters per page
+  const charsPerPage = 2500;
+  
+  // Count form feeds (page breaks) up to this point
+  const textUpToIndex = fullText.slice(0, charIndex);
+  const pageBreaks = (textUpToIndex.match(/\f/g) || []).length;
+  
+  if (pageBreaks > 0) {
+    return pageBreaks + 1;
+  }
+  
+  return Math.floor(charIndex / charsPerPage) + 1;
+}
+
+/**
+ * Re-process all documents for a tenant
+ */
+export async function reprocessTenantDocuments(tenantId: string): Promise<void> {
+  const documents = await prisma.document.findMany({
+    where: { tenantId },
+    select: { id: true },
+  });
+  
+  for (const doc of documents) {
+    await processDocument(doc.id);
+  }
+}

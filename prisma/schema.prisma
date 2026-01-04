@@ -1,0 +1,454 @@
+// Prisma Schema for Archi - WhatsApp AI Knowledge Assistant
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("POSTGRES_URL_NON_POOLING")
+}
+
+// ============================================
+// MULTI-TENANT CORE
+// ============================================
+
+model Tenant {
+  id          String   @id @default(uuid())
+  name        String
+  slug        String   @unique
+  domain      String?
+  logoUrl     String?
+  primaryColor String? @default("#14b8a6")
+  
+  // Subscription & Billing
+  plan        Plan     @default(STARTER)
+  status      TenantStatus @default(ACTIVE)
+  trialEndsAt DateTime?
+  
+  // WhatsApp Configuration
+  whatsappNumbers WhatsappNumber[]
+  
+  // Usage Limits
+  maxDocuments Int @default(50)
+  maxMessages  Int @default(1000)
+  
+  // Timestamps
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  // Relations
+  users       User[]
+  documents   Document[]
+  agents      Agent[]
+  conversations Conversation[]
+  knowledgeBases KnowledgeBase[]
+  auditLogs   AuditLog[]
+  
+  @@index([slug])
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String?
+  name         String
+  avatarUrl    String?
+  role         UserRole @default(MEMBER)
+  
+  // Tenant Association
+  tenantId     String
+  tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  
+  // Auth
+  emailVerified Boolean @default(false)
+  lastLoginAt   DateTime?
+  
+  // Timestamps
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  
+  // Relations
+  uploadedDocuments Document[]
+  conversations     Conversation[]
+  auditLogs         AuditLog[]
+  
+  @@index([email])
+  @@index([tenantId])
+}
+
+// ============================================
+// WHATSAPP CONFIGURATION
+// ============================================
+
+model WhatsappNumber {
+  id              String   @id @default(uuid())
+  phoneNumber     String   @unique
+  displayName     String
+  
+  // Provider Config
+  provider        WhatsappProvider @default(TWILIO)
+  accountSid      String?
+  authToken       String?  // Encrypted in production
+  webhookSecret   String?
+  
+  // Status
+  isActive        Boolean  @default(true)
+  isVerified      Boolean  @default(false)
+  verifiedAt      DateTime?
+  
+  // Tenant
+  tenantId        String
+  tenant          Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  
+  // Timestamps
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  // Relations
+  conversations   Conversation[]
+  
+  @@index([tenantId])
+}
+
+// ============================================
+// KNOWLEDGE BASE & DOCUMENTS
+// ============================================
+
+model KnowledgeBase {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  
+  // Access Control
+  isPublic    Boolean  @default(false)  // Public = customers, Private = internal
+  
+  // Tenant
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  
+  // Timestamps
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  // Relations
+  documents   Document[]
+  agents      Agent[]
+  
+  @@index([tenantId])
+}
+
+model Document {
+  id              String   @id @default(uuid())
+  title           String
+  description     String?
+  
+  // File Info
+  fileName        String
+  fileType        FileType
+  fileSize        Int       // bytes
+  fileUrl         String?   // S3/Storage URL
+  
+  // Processing Status
+  status          DocumentStatus @default(PENDING)
+  processedAt     DateTime?
+  errorMessage    String?
+  
+  // Content
+  rawContent      String?   @db.Text
+  chunkCount      Int       @default(0)
+  
+  // Metadata
+  version         Int       @default(1)
+  tags            String[]
+  
+  // Relations
+  tenantId        String
+  tenant          Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  
+  knowledgeBaseId String?
+  knowledgeBase   KnowledgeBase? @relation(fields: [knowledgeBaseId], references: [id])
+  
+  uploadedById    String?
+  uploadedBy      User?     @relation(fields: [uploadedById], references: [id])
+  
+  chunks          DocumentChunk[]
+  
+  // Timestamps
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  @@index([tenantId])
+  @@index([knowledgeBaseId])
+  @@index([status])
+}
+
+model DocumentChunk {
+  id          String   @id @default(uuid())
+  content     String   @db.Text
+  
+  // Vector Embedding
+  embedding   Float[]  // For Pinecone/pgvector
+  
+  // Position Info
+  chunkIndex  Int
+  pageNumber  Int?
+  startChar   Int?
+  endChar     Int?
+  
+  // Metadata
+  metadata    Json?
+  
+  // Relations
+  documentId  String
+  document    Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  
+  citations   Citation[]
+  
+  // Timestamps
+  createdAt   DateTime @default(now())
+  
+  @@index([documentId])
+}
+
+// ============================================
+// AI AGENTS
+// ============================================
+
+model Agent {
+  id              String   @id @default(uuid())
+  name            String
+  description     String?
+  
+  // Agent Configuration
+  systemPrompt    String   @db.Text
+  temperature     Float    @default(0.7)
+  model           String   @default("gpt-4-turbo-preview")
+  
+  // Behavior Settings
+  maxTokens       Int      @default(1024)
+  confidenceThreshold Float @default(0.7) // Below this, escalate to human
+  
+  // Greeting & Fallbacks
+  greetingMessage String?
+  fallbackMessage String?  @default("I'm not sure about that. Let me connect you with someone who can help.")
+  
+  // Status
+  isActive        Boolean  @default(true)
+  
+  // Relations
+  tenantId        String
+  tenant          Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  
+  knowledgeBases  KnowledgeBase[]
+  conversations   Conversation[]
+  
+  // Timestamps
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  @@index([tenantId])
+}
+
+// ============================================
+// CONVERSATIONS & MESSAGES
+// ============================================
+
+model Conversation {
+  id              String   @id @default(uuid())
+  
+  // External User Info (WhatsApp contact)
+  externalUserId  String   // WhatsApp phone number
+  externalUserName String?
+  
+  // Status
+  status          ConversationStatus @default(ACTIVE)
+  isHandedOff     Boolean  @default(false)
+  handedOffAt     DateTime?
+  resolvedAt      DateTime?
+  
+  // Relations
+  tenantId        String
+  tenant          Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  
+  whatsappNumberId String?
+  whatsappNumber  WhatsappNumber? @relation(fields: [whatsappNumberId], references: [id])
+  
+  agentId         String?
+  agent           Agent?   @relation(fields: [agentId], references: [id])
+  
+  assignedToId    String?  // Human agent assignment
+  assignedTo      User?    @relation(fields: [assignedToId], references: [id])
+  
+  messages        Message[]
+  
+  // Metadata
+  metadata        Json?    // Custom fields
+  
+  // Timestamps
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  @@index([tenantId])
+  @@index([externalUserId])
+  @@index([status])
+}
+
+model Message {
+  id              String   @id @default(uuid())
+  
+  // Content
+  content         String   @db.Text
+  contentType     MessageContentType @default(TEXT)
+  
+  // Direction & Sender
+  direction       MessageDirection
+  senderType      SenderType
+  
+  // Voice Note
+  audioUrl        String?
+  audioDuration   Int?     // seconds
+  transcription   String?  @db.Text
+  
+  // AI Response Metadata
+  confidence      Float?
+  tokensUsed      Int?
+  latencyMs       Int?
+  
+  // Relations
+  conversationId  String
+  conversation    Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  
+  citations       Citation[]
+  
+  // Timestamps
+  createdAt       DateTime @default(now())
+  
+  @@index([conversationId])
+  @@index([createdAt])
+}
+
+model Citation {
+  id          String   @id @default(uuid())
+  
+  // The text snippet used
+  snippet     String   @db.Text
+  
+  // Relations
+  messageId   String
+  message     Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  
+  chunkId     String
+  chunk       DocumentChunk @relation(fields: [chunkId], references: [id], onDelete: Cascade)
+  
+  // Timestamps
+  createdAt   DateTime @default(now())
+  
+  @@index([messageId])
+}
+
+// ============================================
+// AUDIT & ANALYTICS
+// ============================================
+
+model AuditLog {
+  id          String   @id @default(uuid())
+  action      String   // e.g., "document.upload", "conversation.handoff"
+  entity      String   // e.g., "Document", "Conversation"
+  entityId    String?
+  
+  // Changes
+  oldValues   Json?
+  newValues   Json?
+  
+  // Context
+  ipAddress   String?
+  userAgent   String?
+  
+  // Relations
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  
+  userId      String?
+  user        User?    @relation(fields: [userId], references: [id])
+  
+  // Timestamps
+  createdAt   DateTime @default(now())
+  
+  @@index([tenantId])
+  @@index([action])
+  @@index([createdAt])
+}
+
+// ============================================
+// ENUMS
+// ============================================
+
+enum Plan {
+  STARTER
+  PROFESSIONAL
+  ENTERPRISE
+}
+
+enum TenantStatus {
+  ACTIVE
+  TRIAL
+  SUSPENDED
+  CANCELLED
+}
+
+enum UserRole {
+  OWNER
+  ADMIN
+  MEMBER
+  VIEWER
+}
+
+enum WhatsappProvider {
+  TWILIO
+  META_CLOUD
+  WATI
+}
+
+enum FileType {
+  PDF
+  DOCX
+  TXT
+  MD
+  HTML
+  CSV
+  JSON
+}
+
+enum DocumentStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum ConversationStatus {
+  ACTIVE
+  HANDED_OFF
+  RESOLVED
+  ARCHIVED
+}
+
+enum MessageContentType {
+  TEXT
+  VOICE
+  IMAGE
+  DOCUMENT
+}
+
+enum MessageDirection {
+  INBOUND
+  OUTBOUND
+}
+
+enum SenderType {
+  USER       // External WhatsApp user
+  AI         // Archi AI response
+  HUMAN      // Human agent response
+}
