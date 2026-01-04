@@ -72,6 +72,7 @@ model User {
   // Relations
   uploadedDocuments Document[]
   conversations     Conversation[]
+  sentMessages      Message[]
   auditLogs         AuditLog[]
   
   @@index([email])
@@ -319,6 +320,10 @@ model Message {
   confidence      Float?
   tokensUsed      Int?
   latencyMs       Int?
+  
+  // Human Agent (when senderType is HUMAN)
+  humanAgentId    String?
+  humanAgent      User?    @relation(fields: [humanAgentId], references: [id])
   
   // Relations
   conversationId  String
