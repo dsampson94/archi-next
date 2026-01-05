@@ -161,7 +161,7 @@ export async function GET(request: NextRequest) {
     });
     
     return NextResponse.json({
-      userName: user?.name?.split(' ')[0],
+      userName: user?.name ? user.name.split(' ')[0] : undefined,
       documents: {
         total: totalDocuments,
         processed: processedDocuments,

@@ -209,7 +209,7 @@ export default function OnboardingWizard({ isOpen, onClose, tenantId }: Onboardi
       }
 
       // Step 3: Add customers and send welcome messages
-      if (customerNumbers.trim()) {
+      if (customerNumbers && typeof customerNumbers === 'string' && customerNumbers.trim()) {
         const numbers = customerNumbers
           .split('\n')
           .map((n) => n.trim())

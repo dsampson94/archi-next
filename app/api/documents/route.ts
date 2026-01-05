@@ -182,7 +182,7 @@ export async function POST(request: NextRequest) {
           fileUrl,
           rawContent,
           status: 'PENDING',
-          tags: tags ? tags.split(',').map((t) => t.trim()) : [],
+          tags: typeof tags === 'string' && tags ? tags.split(',').map((t) => t.trim()) : [],
           tenantId: auth.tenantId,
           knowledgeBaseId,
           uploadedById: auth.userId,
