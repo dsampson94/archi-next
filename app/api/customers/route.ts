@@ -53,7 +53,7 @@ export async function POST(request: NextRequest) {
     );
 
     // Send welcome messages if requested
-    let messageResults = [];
+    let messageResults: Array<{ to: string; success: boolean; messageSid?: string; error?: string }> = [];
     if (sendWelcome) {
       // Get tenant info for personalized message
       const tenant = await prisma.tenant.findUnique({
