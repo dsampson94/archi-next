@@ -2,6 +2,7 @@
 
 import { motion } from 'framer-motion';
 import Link from 'next/link';
+import { useState, useEffect } from 'react';
 import {
   HiOutlineDocumentText,
   HiOutlineChat,
@@ -13,6 +14,7 @@ import {
   HiOutlineArrowRight,
 } from 'react-icons/hi';
 import { FaWhatsapp } from 'react-icons/fa';
+import OnboardingWizard from './OnboardingWizard';
 
 // Mock data - replace with real API calls
 const stats = [
@@ -38,8 +40,59 @@ const topQuestions = [
 ];
 
 export default function DashboardOverview() {
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [isNewUser, setIsNewUser] = useState(false);
+
+  useEffect(() => {
+    // Check if user has completed onboarding
+    const checkOnboarding = async () => {
+      try {
+        const res = await fetch('/api/onboarding/status');
+        const data = await res.json();
+        if (!data.completed) {
+          setIsNewUser(true);
+          setShowOnboarding(true);
+        }
+      } catch (error) {
+        console.error('Failed to check onboarding status:', error);
+      }
+    };
+    checkOnboarding();
+  }, []);
+
   return (
     <div className="space-y-6">
+      {/* Onboarding Wizard */}
+      <OnboardingWizard
+        isOpen={showOnboarding}
+        onClose={() => setShowOnboarding(false)}
+        tenantId="demo-tenant"
+      />
+
+      {/* Setup Incomplete Banner */}
+      {isNewUser && !showOnboarding && (
+        <motion.div
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-gradient-to-r from-teal-500 to-blue-600 rounded-lg p-6 text-white"
+        >
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-xl font-bold mb-2">🚀 Complete Your Setup</h3>
+              <p className="text-white/90">
+                Set up your AI assistant in just 4 simple steps and start chatting with customers!
+              </p>
+            </div>
+            <button
+              onClick={() => setShowOnboarding(true)}
+              className="px-6 py-3 bg-white text-teal-600 rounded-lg font-semibold hover:bg-gray-100 transition"
+            >
+              Start Setup
+            </button>
+          </div>
+        </motion.div>
+      )}
+
       {/* Welcome Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>

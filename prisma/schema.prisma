@@ -45,6 +45,7 @@ model Tenant {
   conversations Conversation[]
   knowledgeBases KnowledgeBase[]
   auditLogs   AuditLog[]
+  customerContacts CustomerContact[]
   
   @@index([slug])
 }
@@ -111,6 +112,36 @@ model WhatsappNumber {
   conversations   Conversation[]
   
   @@index([tenantId])
+}
+
+// ============================================
+// CUSTOMER CONTACT MAPPING
+// ============================================
+
+model CustomerContact {
+  id           String   @id @default(uuid())
+  phoneNumber  String   // Customer's WhatsApp number
+  name         String?  // Optional customer name
+  email        String?  // Optional customer email
+  
+  // Tenant Assignment
+  tenantId     String
+  tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  
+  // Status
+  isActive     Boolean  @default(true)
+  
+  // Metadata
+  tags         String[] // For grouping/filtering
+  notes        String?  @db.Text
+  
+  // Timestamps
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  
+  @@unique([phoneNumber, tenantId])
+  @@index([tenantId])
+  @@index([phoneNumber])
 }
 
 // ============================================

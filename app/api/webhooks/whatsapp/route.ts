@@ -63,10 +63,20 @@ export async function POST(request: NextRequest) {
       return new NextResponse('Number not configured', { status: 404 });
     }
 
+    // Check if this customer is mapped to a specific tenant
+    // Otherwise use the default tenant from the WhatsApp number config
+    const customerContact = await prisma.customerContact.findFirst({
+      where: { phoneNumber: fromNumber, isActive: true },
+    });
+
+    const tenantId = customerContact?.tenantId || whatsappConfig.tenantId;
+    
+    console.log(`[WhatsApp] Routing to tenant: ${tenantId} ${customerContact ? '(via customer mapping)' : '(default)'}`);
+
     // Find or create conversation
     let conversation = await prisma.conversation.findFirst({
       where: {
-        tenantId: whatsappConfig.tenantId,
+        tenantId,
         externalUserId: fromNumber,
         status: { in: ['ACTIVE', 'HANDED_OFF'] },
       },
@@ -76,12 +86,12 @@ export async function POST(request: NextRequest) {
     if (!conversation) {
       // Get default agent
       const defaultAgent = await prisma.agent.findFirst({
-        where: { tenantId: whatsappConfig.tenantId, isActive: true },
+        where: { tenantId, isActive: true },
       });
 
       conversation = await prisma.conversation.create({
         data: {
-          tenantId: whatsappConfig.tenantId,
+          tenantId,
           externalUserId: fromNumber,
           externalUserName: profileName || undefined,
           whatsappNumberId: whatsappConfig.id,
