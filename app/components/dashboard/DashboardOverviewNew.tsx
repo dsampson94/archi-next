@@ -15,6 +15,7 @@ import {
   HiOutlineLightningBolt,
 } from 'react-icons/hi';
 import { FaWhatsapp } from 'react-icons/fa';
+import OnboardingWizard from './OnboardingWizard';
 
 interface DashboardStats {
   documents: {
@@ -78,6 +79,8 @@ export default function DashboardOverview() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [userName, setUserName] = useState('');
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [isNewUser, setIsNewUser] = useState(false);
 
   useEffect(() => {
     const fetchStats = async () => {
@@ -98,6 +101,23 @@ export default function DashboardOverview() {
     };
 
     fetchStats();
+  }, []);
+
+  useEffect(() => {
+    // Check if user has completed onboarding
+    const checkOnboarding = async () => {
+      try {
+        const res = await fetch('/api/onboarding/status');
+        const data = await res.json();
+        if (!data.completed) {
+          setIsNewUser(true);
+          setShowOnboarding(true);
+        }
+      } catch (error) {
+        console.error('Failed to check onboarding status:', error);
+      }
+    };
+    checkOnboarding();
   }, []);
 
   // Loading state
@@ -189,6 +209,41 @@ export default function DashboardOverview() {
 
   return (
     <div className="space-y-6">
+      {/* Onboarding Wizard */}
+      <OnboardingWizard
+        isOpen={showOnboarding}
+        onClose={() => setShowOnboarding(false)}
+        tenantId="demo-tenant"
+      />
+
+      {/* Setup Incomplete Banner */}
+      {isNewUser && !showOnboarding && (
+        <motion.div
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-archi-500/5 border border-archi-500/20 rounded-xl p-6"
+        >
+          <div className="flex items-start gap-4">
+            <div className="w-10 h-10 rounded-lg bg-archi-500/10 flex items-center justify-center flex-shrink-0">
+              <HiOutlineLightningBolt className="w-5 h-5 text-archi-400" />
+            </div>
+            <div className="flex-1">
+              <h3 className="font-semibold text-white mb-1">Complete Your Setup</h3>
+              <p className="text-sm text-slate-400 mb-3">
+                Finish setting up your AI assistant to start handling customer queries.
+              </p>
+              <button
+                onClick={() => setShowOnboarding(true)}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-archi-500 hover:bg-archi-400 text-white rounded-lg transition-colors text-sm font-medium"
+              >
+                Continue Setup
+                <HiOutlineArrowRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        </motion.div>
+      )}
+
       {/* Welcome Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
@@ -357,8 +412,29 @@ export default function DashboardOverview() {
         transition={{ delay: 0.6 }}
         className="bg-archi-500/5 border border-archi-500/20 rounded-xl p-6"
       >
-        <h2 className="font-semibold text-white mb-4">Quick Actions</h2>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="font-semibold text-white">Quick Actions</h2>
+          <button
+            onClick={() => setShowOnboarding(true)}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-archi-500 to-purple-500 hover:from-archi-400 hover:to-purple-400 text-white rounded-lg transition-all text-sm font-medium shadow-lg shadow-archi-500/20"
+          >
+            <HiOutlineLightningBolt className="w-4 h-4" />
+            Setup Wizard
+          </button>
+        </div>
         <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          <button
+            onClick={() => setShowOnboarding(true)}
+            className="flex items-center gap-3 p-4 bg-gradient-to-br from-archi-500/20 to-purple-500/20 hover:from-archi-500/30 hover:to-purple-500/30 border border-archi-500/30 rounded-lg transition-colors text-left"
+          >
+            <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-archi-500 to-purple-500 flex items-center justify-center">
+              <HiOutlineLightningBolt className="w-5 h-5 text-white" />
+            </div>
+            <div>
+              <p className="font-medium text-white text-sm">New Setup</p>
+              <p className="text-xs text-slate-400">Start guided wizard</p>
+            </div>
+          </button>
           <Link
             href="/dashboard/documents"
             className="flex items-center gap-3 p-4 bg-slate-900/50 hover:bg-slate-800/50 border border-slate-700/50 rounded-lg transition-colors"
@@ -393,18 +469,6 @@ export default function DashboardOverview() {
             <div>
               <p className="font-medium text-white text-sm">WhatsApp Setup</p>
               <p className="text-xs text-slate-400">Connect your number</p>
-            </div>
-          </Link>
-          <Link
-            href="/dashboard/team"
-            className="flex items-center gap-3 p-4 bg-slate-900/50 hover:bg-slate-800/50 border border-slate-700/50 rounded-lg transition-colors"
-          >
-            <div className="w-10 h-10 rounded-lg bg-archi-500/10 flex items-center justify-center">
-              <HiOutlineUserGroup className="w-5 h-5 text-archi-400" />
-            </div>
-            <div>
-              <p className="font-medium text-white text-sm">Invite Team</p>
-              <p className="text-xs text-slate-400">Add team members</p>
             </div>
           </Link>
         </div>

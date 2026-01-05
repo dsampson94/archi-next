@@ -16,6 +16,7 @@ import {
   HiOutlineMenu,
   HiOutlineX,
   HiOutlineLightningBolt,
+  HiOutlineShieldCheck,
 } from 'react-icons/hi';
 import { FaWhatsapp } from 'react-icons/fa';
 import { useAuth } from '@/app/contexts/AuthContext';
@@ -121,6 +122,21 @@ export default function DashboardLayout({ children, user }: DashboardLayoutProps
                 </Link>
               );
             })}
+            
+            {/* Admin Link - Only for OWNER role */}
+            {user.role === 'OWNER' && (
+              <>
+                <div className="border-t border-slate-800 my-3" />
+                <Link
+                  href="/admin"
+                  onClick={() => setSidebarOpen(false)}
+                  className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-amber-400 hover:text-amber-300 hover:bg-amber-500/10 transition-colors"
+                >
+                  <HiOutlineShieldCheck className="w-5 h-5" />
+                  Admin Panel
+                </Link>
+              </>
+            )}
           </nav>
 
           {/* User Section */}
