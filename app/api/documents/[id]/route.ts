@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
-import jwt from 'jsonwebtoken';
+import { jwtVerify } from 'jose';
 import { prisma } from '@/app/lib/prisma';
 import { processDocument } from '@/app/lib/document-processor';
 import { deleteDocumentVectors } from '@/app/lib/pinecone';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
+const JWT_SECRET = new TextEncoder().encode(
+  process.env.JWT_SECRET || 'your-secret-key-change-in-production'
+);
 
 interface JWTPayload {
   userId: string;
@@ -15,16 +17,16 @@ interface JWTPayload {
 }
 
 async function validateAuth(request: NextRequest): Promise<JWTPayload | null> {
-  const cookieStore = cookies();
-  const token = cookieStore.get('auth_token')?.value;
+  const cookieStore = await cookies();
+  const token = cookieStore.get('auth-token')?.value;
   
   if (!token) {
     return null;
   }
   
   try {
-    const decoded = jwt.verify(token, JWT_SECRET) as JWTPayload;
-    return decoded;
+    const { payload } = await jwtVerify(token, JWT_SECRET);
+    return payload as unknown as JWTPayload;
   } catch {
     return null;
   }
