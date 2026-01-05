@@ -102,9 +102,10 @@ export default function DocumentsPage() {
   const [selectedDoc, setSelectedDoc] = useState<Document | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
   const [pagination, setPagination] = useState({ page: 1, totalPages: 1, total: 0 });
+  const [isPolling, setIsPolling] = useState(false);
 
-  const fetchDocuments = useCallback(async () => {
-    setIsLoading(true);
+  const fetchDocuments = useCallback(async (silent = false) => {
+    if (!silent) setIsLoading(true);
     try {
       const params = new URLSearchParams();
       params.set('page', pagination.page.toString());
@@ -122,17 +123,35 @@ export default function DocumentsPage() {
           totalPages: data.pagination.totalPages,
           total: data.pagination.total,
         });
+        
+        // Check if any documents are still processing
+        const hasProcessing = data.documents.some(
+          (d) => d.status === 'PENDING' || d.status === 'PROCESSING'
+        );
+        setIsPolling(hasProcessing);
       }
     } catch (error) {
       console.error('Failed to fetch documents:', error);
     } finally {
-      setIsLoading(false);
+      if (!silent) setIsLoading(false);
     }
   }, [pagination.page, statusFilter]);
 
+  // Initial fetch
   useEffect(() => {
     fetchDocuments();
   }, [fetchDocuments]);
+
+  // Auto-refresh when documents are processing
+  useEffect(() => {
+    if (!isPolling) return;
+    
+    const interval = setInterval(() => {
+      fetchDocuments(true); // Silent refresh
+    }, 5000); // Poll every 5 seconds
+    
+    return () => clearInterval(interval);
+  }, [isPolling, fetchDocuments]);
 
   const handleDelete = async (documentId: string) => {
     try {
@@ -187,7 +206,15 @@ export default function DocumentsPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-white">Documents</h1>
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl font-bold text-white">Documents</h1>
+            {isPolling && (
+              <div className="flex items-center gap-2 px-2.5 py-1 bg-amber-500/10 rounded-lg">
+                <div className="w-2 h-2 bg-amber-400 rounded-full animate-pulse" />
+                <span className="text-xs text-amber-400 font-medium">Auto-refreshing</span>
+              </div>
+            )}
+          </div>
           <p className="text-slate-400 mt-1">
             Manage your knowledge base documents
           </p>
