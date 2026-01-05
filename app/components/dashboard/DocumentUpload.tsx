@@ -129,7 +129,8 @@ export default function DocumentUpload({ onUploadComplete, knowledgeBaseId }: Do
     }
   };
 
-  const getFileExtension = (filename: string) => {
+  const getFileExtension = (filename?: string) => {
+    if (!filename) return '';
     return filename.split('.').pop()?.toLowerCase() || '';
   };
 
@@ -215,16 +216,16 @@ export default function DocumentUpload({ onUploadComplete, knowledgeBaseId }: Do
                 >
                   {/* File Icon */}
                   <div className="w-10 h-10 rounded-lg bg-slate-700 flex items-center justify-center text-lg">
-                    {FILE_ICONS[getFileExtension(file.name)] || '📄'}
+                    {FILE_ICONS[getFileExtension(file.name || '')] || '📄'}
                   </div>
 
                   {/* File Info */}
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-white truncate">
-                      {file.name}
+                      {file.name || 'Unknown file'}
                     </p>
                     <p className="text-xs text-slate-400">
-                      {formatFileSize(file.size)}
+                      {formatFileSize(file.size || 0)}
                       {file.error && (
                         <span className="text-red-400 ml-2">• {file.error}</span>
                       )}
