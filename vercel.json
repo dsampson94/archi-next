@@ -1,0 +1,16 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/process-documents",
+      "schedule": "*/5 * * * *"
+    }
+  ],
+  "functions": {
+    "app/api/cron/process-documents/route.ts": {
+      "maxDuration": 60
+    },
+    "app/api/documents/route.ts": {
+      "maxDuration": 30
+    }
+  }
+}
