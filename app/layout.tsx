@@ -3,6 +3,7 @@ import { Inter, JetBrains_Mono } from 'next/font/google';
 import './globals.css';
 import { AuthProvider } from '@/app/contexts/AuthContext';
 import { Toaster } from 'react-hot-toast';
+import JsonLd from '@/app/components/JsonLd';
 
 const inter = Inter({ 
   subsets: ['latin'],
@@ -19,38 +20,43 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL || 'https://archi.ai'),
+  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL || 'https://archi-next.vercel.app'),
   title: {
-    default: 'Archi - Your Company\'s Knowledge on WhatsApp',
+    default: 'Archi - WhatsApp AI Assistant for Your Business',
     template: '%s | Archi'
   },
-  description: 'Archi is a WhatsApp-based AI assistant trained on your company\'s documents, knowledge, and processes — so your people can ask questions and get trusted answers instantly.',
+  description: 'Transform your company documents into a WhatsApp-first AI assistant. Instant answers from your knowledge base with audit trails, POPIA compliance, and seamless human handoff.',
   keywords: [
-    'WhatsApp AI',
-    'knowledge management',
-    'AI assistant',
-    'document chatbot',
-    'company knowledge base',
-    'RAG',
-    'retrieval augmented generation',
+    'WhatsApp AI assistant',
+    'WhatsApp chatbot',
+    'AI knowledge base',
     'business automation',
-    'employee onboarding',
-    'HR assistant',
-    'compliance bot',
+    'document AI',
+    'RAG chatbot',
+    'retrieval augmented generation',
+    'customer support AI',
     'South Africa AI',
-    'POPIA compliant'
+    'POPIA compliant AI',
+    'property management AI',
+    'HR chatbot',
+    'employee onboarding bot',
+    'internal knowledge management',
+    'WhatsApp business API'
   ],
-  authors: [{ name: 'Archi Team' }],
+  authors: [{ name: 'Archi', url: 'https://archi-next.vercel.app' }],
   creator: 'Archi',
   publisher: 'Archi',
   applicationName: 'Archi',
-  category: 'Business Tools',
+  category: 'Business',
+  classification: 'Business Software',
   robots: {
     index: true,
     follow: true,
+    nocache: false,
     googleBot: {
       index: true,
       follow: true,
+      noimageindex: false,
       'max-video-preview': -1,
       'max-image-preview': 'large',
       'max-snippet': -1,
@@ -60,43 +66,60 @@ export const metadata: Metadata = {
   openGraph: {
     type: 'website',
     locale: 'en_ZA',
-    url: 'https://archi.ai',
+    url: 'https://archi-next.vercel.app',
     siteName: 'Archi',
-    title: 'Archi - Your Company\'s Knowledge on WhatsApp',
-    description: 'Turn your internal docs into a WhatsApp-first AI assistant with audit trails and safe answers.',
-    images: [
-      {
-        url: '/og-image.jpg',
-        width: 1200,
-        height: 630,
-        alt: 'Archi - WhatsApp AI Knowledge Assistant',
-      },
-    ],
+    title: 'Archi - WhatsApp AI Assistant for Your Business',
+    description: 'Transform your company documents into a WhatsApp-first AI assistant. Instant answers with audit trails and POPIA compliance.',
   },
   
   twitter: {
     card: 'summary_large_image',
-    title: 'Archi - Your Company\'s Knowledge on WhatsApp',
-    description: 'Turn your internal docs into a WhatsApp-first AI assistant with audit trails and safe answers.',
-    images: ['/og-image.jpg'],
+    title: 'Archi - WhatsApp AI Assistant',
+    description: 'Transform your company documents into a WhatsApp-first AI assistant with audit trails.',
     creator: '@archi_ai',
+    site: '@archi_ai',
   },
   
   appleWebApp: {
     capable: true,
     statusBarStyle: 'black-translucent',
     title: 'Archi',
+    startupImage: [
+      '/apple-touch-icon.png',
+    ],
+  },
+  
+  formatDetection: {
+    telephone: false,
+    date: false,
+    email: false,
+    address: false,
   },
   
   icons: {
     icon: [
-      { url: '/favicon.ico', sizes: 'any' },
       { url: '/icon.svg', type: 'image/svg+xml' },
     ],
-    apple: '/apple-touch-icon.png',
+    shortcut: '/icon.svg',
+    apple: '/apple-icon',
   },
   
   manifest: '/manifest.json',
+  
+  alternates: {
+    canonical: 'https://archi-next.vercel.app',
+  },
+  
+  verification: {
+    // Add these when you have them:
+    // google: 'your-google-verification-code',
+    // yandex: 'your-yandex-verification-code',
+  },
+  
+  other: {
+    'msapplication-TileColor': '#14b8a6',
+    'msapplication-config': '/browserconfig.xml',
+  },
 };
 
 export const viewport: Viewport = {
@@ -116,6 +139,9 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className={`${inter.variable} ${jetbrainsMono.variable}`}>
+      <head>
+        <JsonLd />
+      </head>
       <body className={`${inter.className} antialiased bg-slate-950 text-white min-h-screen`}>
         <AuthProvider>
           {children}

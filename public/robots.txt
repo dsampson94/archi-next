@@ -1,4 +1,60 @@
+# https://www.robotstxt.org/robotstxt.html
+
+# Allow all crawlers
 User-agent: *
 Allow: /
 
-Sitemap: https://archi.ai/sitemap.xml
+# Disallow admin and API routes
+Disallow: /admin
+Disallow: /admin/*
+Disallow: /api/*
+Disallow: /dashboard
+Disallow: /dashboard/*
+Disallow: /auth
+Disallow: /auth/*
+
+# Allow specific public pages
+Allow: /
+Allow: /features
+Allow: /pricing
+Allow: /blog
+Allow: /docs
+Allow: /contact
+Allow: /privacy
+Allow: /terms
+
+# Crawl delay for being respectful
+Crawl-delay: 1
+
+# Sitemap location
+Sitemap: https://archi-next.vercel.app/sitemap.xml
+
+# Google specific
+User-agent: Googlebot
+Allow: /
+Disallow: /admin
+Disallow: /api/*
+Disallow: /dashboard
+
+# Bing specific
+User-agent: Bingbot
+Allow: /
+Disallow: /admin
+Disallow: /api/*
+Disallow: /dashboard
+
+# Block AI training crawlers (optional - remove if you want to allow)
+User-agent: GPTBot
+Disallow: /
+
+User-agent: ChatGPT-User
+Disallow: /
+
+User-agent: CCBot
+Disallow: /
+
+User-agent: anthropic-ai
+Disallow: /
+
+User-agent: Google-Extended
+Disallow: /
