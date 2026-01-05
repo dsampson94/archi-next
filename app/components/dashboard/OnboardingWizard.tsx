@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import { X, Check, Upload, Settings, Users, Rocket } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { X, Check, Upload, Settings, Users, Rocket, AlertCircle } from 'lucide-react';
 
 interface OnboardingStep {
   id: number;
@@ -37,6 +37,12 @@ const STEPS: OnboardingStep[] = [
   },
 ];
 
+interface StepError {
+  step: number;
+  field?: string;
+  message: string;
+}
+
 interface OnboardingWizardProps {
   isOpen: boolean;
   onClose: () => void;
@@ -57,8 +63,41 @@ export default function OnboardingWizard({ isOpen, onClose, tenantId }: Onboardi
   const [welcomeMessage, setWelcomeMessage] = useState(
     '👋 Hi! I\'m your AI assistant. I\'m here to help answer your questions. Feel free to ask me anything!'
   );
+  const [stepError, setStepError] = useState<StepError | null>(null);
+  const [existingAgentId, setExistingAgentId] = useState<string | null>(null);
 
-  if (!isOpen) return null;
+  // Check if agent already exists on mount
+  useEffect(() => {
+    const checkExistingAgent = async () => {
+      try {
+        const response = await fetch('/api/agents');
+        if (response.ok) {
+          const data = await response.json();
+          if (data.agent) {
+            setExistingAgentId(data.agent.id);
+            // Pre-fill form with existing agent data
+            setBotName(data.agent.name || '');
+            setSystemPrompt(data.agent.systemPrompt || systemPrompt);
+            setTone(data.agent.tone || 'professional');
+            if (data.agent.greeting) {
+              setWelcomeMessage(data.agent.greeting);
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Error checking existing agent:', error);
+      }
+    };
+    
+    if (isOpen) {
+      checkExistingAgent();
+    }
+  }, [isOpen]);
+
+  // Clear error when user changes step or modifies input
+  const clearError = () => {
+    if (stepError) setStepError(null);
+  };  if (!isOpen) return null;
 
   const handleNext = async () => {
     if (currentStep < 4) {
@@ -70,34 +109,99 @@ export default function OnboardingWizard({ isOpen, onClose, tenantId }: Onboardi
 
   const handleComplete = async () => {
     setIsSubmitting(true);
+    setStepError(null);
+    
     try {
-      // Step 1: Update agent configuration
-      setProcessingStep('Creating your AI assistant...');
+      // Step 1: Create or Update agent configuration
+      setProcessingStep(existingAgentId ? 'Updating your AI assistant...' : 'Creating your AI assistant...');
+      
+      const agentPayload = {
+        name: botName || 'My AI Assistant',
+        systemPrompt,
+        tone,
+        greeting: welcomeMessage,
+      };
+      
       const agentResponse = await fetch('/api/agents', {
-        method: 'POST',
+        method: existingAgentId ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: botName || 'My AI Assistant',
-          systemPrompt,
-          tone,
-          greetingMessage: welcomeMessage,
-        }),
+        body: JSON.stringify(agentPayload),
       });
 
-      if (!agentResponse.ok) throw new Error('Failed to create agent');
+      if (!agentResponse.ok) {
+        const errorData = await agentResponse.json();
+        
+        // Handle specific error cases
+        if (errorData.error?.includes('already exists')) {
+          // Agent exists, retry with PUT
+          const retryResponse = await fetch('/api/agents', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(agentPayload),
+          });
+          
+          if (!retryResponse.ok) {
+            const retryError = await retryResponse.json();
+            throw new Error(retryError.error || 'Failed to update agent');
+          }
+        } else if (errorData.error?.includes('name')) {
+          setStepError({
+            step: 1,
+            field: 'botName',
+            message: errorData.error || 'Invalid bot name. Please choose a different name.',
+          });
+          setCurrentStep(1);
+          setIsSubmitting(false);
+          setProcessingStep('');
+          return;
+        } else {
+          throw new Error(errorData.error || 'Failed to save agent configuration');
+        }
+      }
 
       // Step 2: Upload and process documents
       if (uploadedFiles.length > 0) {
         setProcessingStep(`Processing ${uploadedFiles.length} document(s)...`);
-        const formData = new FormData();
-        uploadedFiles.forEach((file) => formData.append('files', file));
         
-        const uploadResponse = await fetch('/api/documents', {
-          method: 'POST',
-          body: formData,
-        });
+        // Upload files one by one to get better error messages
+        for (let i = 0; i < uploadedFiles.length; i++) {
+          const file = uploadedFiles[i];
+          const formData = new FormData();
+          formData.append('file', file);
+          
+          const uploadResponse = await fetch('/api/documents', {
+            method: 'POST',
+            body: formData,
+          });
 
-        if (!uploadResponse.ok) throw new Error('Failed to upload documents');
+          if (!uploadResponse.ok) {
+            const errorData = await uploadResponse.json();
+            
+            if (errorData.error?.includes('limit')) {
+              setStepError({
+                step: 2,
+                message: errorData.error || 'Document limit reached. Please upgrade your plan.',
+              });
+              setCurrentStep(2);
+              setIsSubmitting(false);
+              setProcessingStep('');
+              return;
+            } else if (errorData.error?.includes('type') || errorData.error?.includes('Unsupported')) {
+              setStepError({
+                step: 2,
+                message: `"${file.name}": ${errorData.error}`,
+              });
+              setCurrentStep(2);
+              setIsSubmitting(false);
+              setProcessingStep('');
+              return;
+            }
+            
+            throw new Error(`Failed to upload "${file.name}": ${errorData.error}`);
+          }
+          
+          setProcessingStep(`Uploaded ${i + 1}/${uploadedFiles.length} documents...`);
+        }
         
         // Wait a bit for document processing to start
         setProcessingStep('Indexing documents into knowledge base...');
@@ -111,8 +215,22 @@ export default function OnboardingWizard({ isOpen, onClose, tenantId }: Onboardi
           .map((n) => n.trim())
           .filter((n) => n);
         
+        // Validate phone numbers
+        const invalidNumbers = numbers.filter(n => !n.match(/^\+?[1-9]\d{6,14}$/));
+        if (invalidNumbers.length > 0) {
+          setStepError({
+            step: 4,
+            field: 'customerNumbers',
+            message: `Invalid phone number format: "${invalidNumbers[0]}". Use format: +27821234567`,
+          });
+          setCurrentStep(4);
+          setIsSubmitting(false);
+          setProcessingStep('');
+          return;
+        }
+        
         if (numbers.length > 0) {
-          setProcessingStep(`Sending welcome messages to ${numbers.length} customer(s)...`);
+          setProcessingStep(`Adding ${numbers.length} customer(s)...`);
           
           const customersResponse = await fetch('/api/customers', {
             method: 'POST',
@@ -124,10 +242,24 @@ export default function OnboardingWizard({ isOpen, onClose, tenantId }: Onboardi
             }),
           });
 
-          if (!customersResponse.ok) throw new Error('Failed to add customers');
-          
-          const result = await customersResponse.json();
-          console.log(`Successfully sent ${result.messagesSent} welcome messages`);
+          if (!customersResponse.ok) {
+            const errorData = await customersResponse.json();
+            
+            if (errorData.error?.includes('WhatsApp') || errorData.error?.includes('Twilio')) {
+              // Non-blocking - WhatsApp not configured, but continue
+              console.warn('WhatsApp not configured:', errorData.error);
+            } else {
+              setStepError({
+                step: 4,
+                message: errorData.error || 'Failed to add customers. You can add them later from the dashboard.',
+              });
+              // Don't block completion for customer errors - they can be added later
+              console.error('Customer add error:', errorData.error);
+            }
+          } else {
+            const result = await customersResponse.json();
+            console.log(`Successfully added ${result.count || numbers.length} customers`);
+          }
         }
       }
 
@@ -141,7 +273,13 @@ export default function OnboardingWizard({ isOpen, onClose, tenantId }: Onboardi
       window.location.reload();
     } catch (error) {
       console.error('Onboarding error:', error);
-      alert('Something went wrong. Please try again.');
+      
+      // Show a more helpful error message
+      const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred';
+      setStepError({
+        step: currentStep,
+        message: errorMessage,
+      });
       setProcessingStep('');
     } finally {
       setIsSubmitting(false);
@@ -164,13 +302,13 @@ export default function OnboardingWizard({ isOpen, onClose, tenantId }: Onboardi
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-      <div className="relative w-full max-w-3xl bg-white rounded-xl shadow-2xl max-h-[90vh] overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+      <div className="relative w-full max-w-2xl bg-white rounded-xl shadow-2xl max-h-[85vh] flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b">
+        <div className="flex items-center justify-between px-5 py-3 border-b flex-shrink-0">
           <div>
-            <h2 className="text-2xl font-bold text-gray-900">Set Up Your AI Assistant</h2>
-            <p className="text-sm text-gray-600 mt-1">
+            <h2 className="text-xl font-bold text-gray-900">Set Up Your AI Assistant</h2>
+            <p className="text-xs text-gray-600">
               Step {currentStep} of {STEPS.length}
             </p>
           </div>
@@ -178,16 +316,16 @@ export default function OnboardingWizard({ isOpen, onClose, tenantId }: Onboardi
             onClick={onClose}
             className="text-gray-400 hover:text-gray-600 transition"
           >
-            <X size={24} />
+            <X size={20} />
           </button>
         </div>
 
         {/* Progress Steps */}
-        <div className="flex items-center justify-between px-6 py-4 bg-gray-50 border-b">
+        <div className="flex items-center justify-between px-5 py-2 bg-gray-50 border-b flex-shrink-0">
           {STEPS.map((step, idx) => (
             <div key={step.id} className="flex items-center">
               <div
-                className={`flex items-center justify-center w-10 h-10 rounded-full font-semibold ${
+                className={`flex items-center justify-center w-8 h-8 rounded-full text-sm font-semibold ${
                   currentStep > step.id
                     ? 'bg-teal-600 text-white'
                     : currentStep === step.id
@@ -195,11 +333,11 @@ export default function OnboardingWizard({ isOpen, onClose, tenantId }: Onboardi
                     : 'bg-gray-200 text-gray-500'
                 }`}
               >
-                {currentStep > step.id ? <Check size={20} /> : step.id}
+                {currentStep > step.id ? <Check size={16} /> : step.id}
               </div>
               {idx < STEPS.length - 1 && (
                 <div
-                  className={`w-12 h-1 mx-2 ${
+                  className={`w-8 h-0.5 mx-1 ${
                     currentStep > step.id ? 'bg-teal-600' : 'bg-gray-200'
                   }`}
                 />
@@ -209,39 +347,72 @@ export default function OnboardingWizard({ isOpen, onClose, tenantId }: Onboardi
         </div>
 
         {/* Content */}
-        <div className="p-8 overflow-y-auto max-h-[calc(90vh-200px)]">
+        <div className="p-5 overflow-y-auto flex-1 min-h-0">
+          {/* Global Error Alert */}
+          {stepError && stepError.step === currentStep && (
+            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-start gap-3">
+              <AlertCircle className="text-red-500 flex-shrink-0 mt-0.5" size={18} />
+              <div className="flex-1">
+                <p className="text-sm font-medium text-red-800">Error</p>
+                <p className="text-sm text-red-700">{stepError.message}</p>
+              </div>
+              <button
+                onClick={() => setStepError(null)}
+                className="text-red-400 hover:text-red-600"
+              >
+                <X size={16} />
+              </button>
+            </div>
+          )}
+
           {/* Step 1: Name Your Bot */}
           {currentStep === 1 && (
-            <div className="space-y-6">
-              <div className="text-center mb-8">
-                <div className="inline-flex items-center justify-center w-16 h-16 bg-teal-100 rounded-full mb-4">
-                  <Settings className="text-teal-600" size={32} />
+            <div className="space-y-4">
+              <div className="text-center mb-4">
+                <div className="inline-flex items-center justify-center w-12 h-12 bg-teal-100 rounded-full mb-2">
+                  <Settings className="text-teal-600" size={24} />
                 </div>
-                <h3 className="text-xl font-bold text-gray-900">{STEPS[0].title}</h3>
+                <h3 className="text-lg font-bold text-gray-900">{STEPS[0].title}</h3>
                 <p className="text-gray-600 mt-2">{STEPS[0].description}</p>
               </div>
 
+              {existingAgentId && (
+                <div className="p-2 bg-blue-50 border border-blue-200 rounded-lg">
+                  <p className="text-xs text-blue-800">
+                    ℹ️ You already have an AI assistant configured. Changes will update your existing bot.
+                  </p>
+                </div>
+              )}
+
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-sm font-medium text-gray-700 mb-1">
                   Bot Name *
                 </label>
                 <input
                   type="text"
                   value={botName}
-                  onChange={(e) => setBotName(e.target.value)}
+                  onChange={(e) => {
+                    setBotName(e.target.value);
+                    clearError();
+                  }}
                   placeholder="e.g., Customer Support Bot, Sales Assistant"
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                  className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent text-sm ${
+                    stepError?.field === 'botName' ? 'border-red-500 bg-red-50' : 'border-gray-300'
+                  }`}
                 />
+                {stepError?.field === 'botName' && (
+                  <p className="mt-1 text-xs text-red-600">{stepError.message}</p>
+                )}
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-sm font-medium text-gray-700 mb-1">
                   Display Name (shown to customers)
                 </label>
                 <input
                   type="text"
                   placeholder="e.g., Support Team, John from Sales"
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent text-sm"
                 />
               </div>
             </div>
@@ -249,21 +420,21 @@ export default function OnboardingWizard({ isOpen, onClose, tenantId }: Onboardi
 
           {/* Step 2: Upload Documents */}
           {currentStep === 2 && (
-            <div className="space-y-6">
-              <div className="text-center mb-8">
-                <div className="inline-flex items-center justify-center w-16 h-16 bg-teal-100 rounded-full mb-4">
-                  <Upload className="text-teal-600" size={32} />
+            <div className="space-y-4">
+              <div className="text-center mb-4">
+                <div className="inline-flex items-center justify-center w-12 h-12 bg-teal-100 rounded-full mb-2">
+                  <Upload className="text-teal-600" size={24} />
                 </div>
-                <h3 className="text-xl font-bold text-gray-900">{STEPS[1].title}</h3>
-                <p className="text-gray-600 mt-2">{STEPS[1].description}</p>
+                <h3 className="text-lg font-bold text-gray-900">{STEPS[1].title}</h3>
+                <p className="text-sm text-gray-600">{STEPS[1].description}</p>
               </div>
 
-              <div className="border-2 border-dashed border-gray-300 rounded-lg p-12 text-center hover:border-teal-500 transition">
-                <Upload className="mx-auto text-gray-400 mb-4" size={48} />
-                <p className="text-gray-700 font-medium mb-2">
+              <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-teal-500 transition">
+                <Upload className="mx-auto text-gray-400 mb-2" size={32} />
+                <p className="text-gray-700 font-medium text-sm mb-1">
                   Drag & drop files here, or click to browse
                 </p>
-                <p className="text-sm text-gray-500 mb-4">
+                <p className="text-xs text-gray-500 mb-3">
                   Supports PDF, DOCX, TXT, Markdown, HTML, CSV, JSON (Max 50MB)
                 </p>
                 <input
@@ -297,42 +468,43 @@ export default function OnboardingWizard({ isOpen, onClose, tenantId }: Onboardi
               )}
 
               {uploadedFiles.length > 0 && (
-                <div className="space-y-3">
-                  <p className="text-sm font-medium text-gray-700">
+                <div className="space-y-2">
+                  <p className="text-xs font-medium text-gray-700">
                     {uploadedFiles.length} file(s) selected:
                   </p>
-                  {uploadedFiles.map((file, idx) => (
-                    <div
-                      key={idx}
-                      className="flex items-center justify-between bg-gray-50 p-3 rounded-lg"
-                    >
-                      <span className="text-sm text-gray-700">{file.name}</span>
-                      <button
-                        onClick={() =>
-                          setUploadedFiles(uploadedFiles.filter((_, i) => i !== idx))
-                        }
-                        className="text-red-600 hover:text-red-800"
+                  <div className="max-h-24 overflow-y-auto space-y-1">
+                    {uploadedFiles.map((file, idx) => (
+                      <div
+                        key={idx}
+                        className="flex items-center justify-between bg-gray-50 px-3 py-2 rounded"
                       >
-                        <X size={16} />
-                      </button>
-                    </div>
-                  ))}
+                        <span className="text-xs text-gray-700 truncate">{file.name}</span>
+                        <button
+                          onClick={() =>
+                            setUploadedFiles(uploadedFiles.filter((_, i) => i !== idx))
+                          }
+                          className="text-red-600 hover:text-red-800 ml-2"
+                        >
+                          <X size={14} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
                   
                   {/* Proceed Button - shown after file selection */}
                   <button
                     onClick={handleNext}
-                    className="w-full mt-4 px-6 py-4 bg-teal-600 text-white rounded-lg hover:bg-teal-700 font-semibold text-lg flex items-center justify-center gap-2 shadow-lg hover:shadow-xl transition-all"
+                    className="w-full mt-2 px-4 py-3 bg-teal-600 text-white rounded-lg hover:bg-teal-700 font-semibold flex items-center justify-center gap-2 shadow-md transition-all"
                   >
-                    <Check size={20} />
+                    <Check size={18} />
                     Proceed with {uploadedFiles.length} Document{uploadedFiles.length > 1 ? 's' : ''}
                   </button>
                 </div>
               )}
 
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                <p className="text-sm text-blue-800">
-                  💡 <strong>Tip:</strong> You can skip this step and add documents later from
-                  the Documents page.
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-2">
+                <p className="text-xs text-blue-800">
+                  💡 <strong>Tip:</strong> You can skip this step and add documents later.
                 </p>
               </div>
             </div>
@@ -340,23 +512,23 @@ export default function OnboardingWizard({ isOpen, onClose, tenantId }: Onboardi
 
           {/* Step 3: Configure Agent */}
           {currentStep === 3 && (
-            <div className="space-y-6">
-              <div className="text-center mb-8">
-                <div className="inline-flex items-center justify-center w-16 h-16 bg-teal-100 rounded-full mb-4">
-                  <Settings className="text-teal-600" size={32} />
+            <div className="space-y-4">
+              <div className="text-center mb-4">
+                <div className="inline-flex items-center justify-center w-12 h-12 bg-teal-100 rounded-full mb-2">
+                  <Settings className="text-teal-600" size={24} />
                 </div>
-                <h3 className="text-xl font-bold text-gray-900">{STEPS[2].title}</h3>
-                <p className="text-gray-600 mt-2">{STEPS[2].description}</p>
+                <h3 className="text-lg font-bold text-gray-900">{STEPS[2].title}</h3>
+                <p className="text-sm text-gray-600">{STEPS[2].description}</p>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-sm font-medium text-gray-700 mb-1">
                   Tone & Personality
                 </label>
                 <select
                   value={tone}
                   onChange={(e) => setTone(e.target.value)}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 text-sm"
                 >
                   <option value="professional">Professional</option>
                   <option value="friendly">Friendly</option>
@@ -366,22 +538,21 @@ export default function OnboardingWizard({ isOpen, onClose, tenantId }: Onboardi
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-sm font-medium text-gray-700 mb-1">
                   System Prompt (How should your bot behave?) *
                 </label>
                 <textarea
                   value={systemPrompt}
                   onChange={(e) => setSystemPrompt(e.target.value)}
-                  rows={6}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500"
+                  rows={4}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 text-sm"
                   placeholder="Example: You are a helpful customer support assistant for XYZ company..."
                 />
               </div>
 
-              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-                <p className="text-sm text-yellow-800">
-                  ⚙️ <strong>Advanced settings</strong> (confidence threshold, temperature, etc.)
-                  can be configured later in Settings.
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-2">
+                <p className="text-xs text-yellow-800">
+                  ⚙️ <strong>Advanced settings</strong> can be configured later in Settings.
                 </p>
               </div>
             </div>
@@ -389,60 +560,58 @@ export default function OnboardingWizard({ isOpen, onClose, tenantId }: Onboardi
 
           {/* Step 4: Add Customers */}
           {currentStep === 4 && (
-            <div className="space-y-6">
-              <div className="text-center mb-8">
-                <div className="inline-flex items-center justify-center w-16 h-16 bg-teal-100 rounded-full mb-4">
-                  <Users className="text-teal-600" size={32} />
+            <div className="space-y-3">
+              <div className="text-center mb-3">
+                <div className="inline-flex items-center justify-center w-12 h-12 bg-teal-100 rounded-full mb-2">
+                  <Users className="text-teal-600" size={24} />
                 </div>
-                <h3 className="text-xl font-bold text-gray-900">{STEPS[3].title}</h3>
-                <p className="text-gray-600 mt-2">{STEPS[3].description}</p>
+                <h3 className="text-lg font-bold text-gray-900">{STEPS[3].title}</h3>
+                <p className="text-sm text-gray-600">{STEPS[3].description}</p>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Welcome Message (sent to customers automatically)
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Welcome Message
                 </label>
                 <textarea
                   value={welcomeMessage}
                   onChange={(e) => setWelcomeMessage(e.target.value)}
-                  rows={3}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500"
+                  rows={2}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 text-sm"
                   placeholder="👋 Hi! I'm here to help..."
                 />
-                <p className="text-xs text-gray-500 mt-1">
-                  This message will be sent via WhatsApp when you complete setup
-                </p>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-sm font-medium text-gray-700 mb-1">
                   Customer Phone Numbers (one per line)
                 </label>
                 <textarea
                   value={customerNumbers}
-                  onChange={(e) => setCustomerNumbers(e.target.value)}
-                  rows={8}
-                  placeholder="+27821234567&#10;+27821234568&#10;+27821234569"
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 font-mono text-sm"
+                  onChange={(e) => {
+                    setCustomerNumbers(e.target.value);
+                    clearError();
+                  }}
+                  rows={4}
+                  placeholder="+27821234567&#10;+27821234568"
+                  className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-teal-500 font-mono text-xs ${
+                    stepError?.field === 'customerNumbers' ? 'border-red-500 bg-red-50' : 'border-gray-300'
+                  }`}
                 />
-                <p className="text-xs text-gray-500 mt-2">
-                  Format: Include country code (e.g., +27 for South Africa)
-                </p>
+                {stepError?.field === 'customerNumbers' ? (
+                  <p className="text-xs text-red-600 mt-1">{stepError.message}</p>
+                ) : (
+                  <p className="text-xs text-gray-500 mt-1">
+                    Include country code (e.g., +27 for South Africa). Leave blank to skip.
+                  </p>
+                )}
               </div>
 
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                <p className="text-sm text-blue-800">
-                  💡 <strong>Tip:</strong> You can also bulk import via CSV later from the
-                  Customers page.
-                </p>
-              </div>
-
-              <div className="bg-green-50 border border-green-200 rounded-lg p-6 text-center">
-                <Rocket className="mx-auto text-green-600 mb-3" size={40} />
-                <h4 className="font-bold text-green-900 mb-2">Almost Ready!</h4>
-                <p className="text-sm text-green-800">
-                  Click "Complete Setup" to launch your AI assistant. Your customers will receive a
-                  welcome message and can start chatting immediately!
+              <div className="bg-green-50 border border-green-200 rounded-lg p-3 text-center">
+                <Rocket className="mx-auto text-green-600 mb-1" size={24} />
+                <h4 className="font-semibold text-green-900 text-sm">Almost Ready!</h4>
+                <p className="text-xs text-green-800">
+                  Click "Complete Setup" to launch your AI assistant.
                 </p>
               </div>
             </div>
@@ -450,37 +619,37 @@ export default function OnboardingWizard({ isOpen, onClose, tenantId }: Onboardi
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-between p-6 border-t bg-gray-50">
+        <div className="flex items-center justify-between px-5 py-3 border-t bg-gray-50 flex-shrink-0">
           <button
             onClick={() => setCurrentStep(Math.max(1, currentStep - 1))}
             disabled={currentStep === 1 || isSubmitting}
-            className="px-6 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Back
           </button>
 
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3">
             {isSubmitting && processingStep && (
-              <div className="flex items-center gap-2 text-sm text-gray-600">
-                <div className="animate-spin h-4 w-4 border-2 border-teal-600 border-t-transparent rounded-full" />
-                <span>{processingStep}</span>
+              <div className="flex items-center gap-2 text-xs text-gray-600">
+                <div className="animate-spin h-3 w-3 border-2 border-teal-600 border-t-transparent rounded-full" />
+                <span className="hidden sm:inline">{processingStep}</span>
               </div>
             )}
             
             <button
               onClick={handleNext}
               disabled={!canProceed() || isSubmitting}
-              className="px-8 py-3 bg-teal-600 text-white rounded-lg hover:bg-teal-700 font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              className="px-6 py-2 bg-teal-600 text-white text-sm rounded-lg hover:bg-teal-700 font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
             >
               {isSubmitting ? (
                 <>
-                  <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full" />
+                  <div className="animate-spin h-3 w-3 border-2 border-white border-t-transparent rounded-full" />
                   Processing...
                 </>
               ) : currentStep === 4 ? (
                 <>
-                  <Rocket size={18} />
-                  Complete Setup & Send Messages
+                  <Rocket size={16} />
+                  Complete Setup
                 </>
               ) : (
                 'Next'
