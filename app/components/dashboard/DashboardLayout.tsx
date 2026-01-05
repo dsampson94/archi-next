@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   HiOutlineHome,
@@ -19,7 +19,10 @@ import {
   HiOutlineShieldCheck,
 } from 'react-icons/hi';
 import { FaWhatsapp } from 'react-icons/fa';
+import { Coins, Plus } from 'lucide-react';
 import { useAuth } from '@/app/contexts/AuthContext';
+import WorkspaceSwitcher from './WorkspaceSwitcher';
+import TokenPurchaseModal from './TokenPurchaseModal';
 
 interface User {
   userId: string;
@@ -39,9 +42,10 @@ const navigation = [
   { name: 'Overview', href: '/dashboard', icon: HiOutlineHome },
   { name: 'Documents', href: '/dashboard/documents', icon: HiOutlineDocumentText },
   { name: 'Conversations', href: '/dashboard/conversations', icon: HiOutlineChat },
-  { name: 'Agents', href: '/dashboard/agents', icon: HiOutlineLightningBolt },
+  { name: 'Bots', href: '/dashboard/agents', icon: HiOutlineLightningBolt },
   { name: 'WhatsApp', href: '/dashboard/whatsapp', icon: FaWhatsapp },
   { name: 'Analytics', href: '/dashboard/analytics', icon: HiOutlineChartBar },
+  { name: 'Billing', href: '/dashboard/billing', icon: Coins },
   { name: 'Team', href: '/dashboard/team', icon: HiOutlineUserGroup },
   { name: 'Settings', href: '/dashboard/settings', icon: HiOutlineCog },
 ];
@@ -50,6 +54,24 @@ export default function DashboardLayout({ children, user }: DashboardLayoutProps
   const pathname = usePathname();
   const { logout } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [tokenBalance, setTokenBalance] = useState<number>(0);
+  const [showPurchaseModal, setShowPurchaseModal] = useState(false);
+
+  useEffect(() => {
+    fetchBalance();
+  }, []);
+
+  const fetchBalance = async () => {
+    try {
+      const res = await fetch('/api/billing/balance');
+      const data = await res.json();
+      if (data.balance !== undefined) {
+        setTokenBalance(data.balance);
+      }
+    } catch (err) {
+      console.error('Error fetching balance:', err);
+    }
+  };
 
   const isActive = (href: string) => {
     if (href === '/dashboard') {
@@ -96,10 +118,29 @@ export default function DashboardLayout({ children, user }: DashboardLayoutProps
             </button>
           </div>
 
-          {/* Tenant Name */}
+          {/* Workspace Switcher */}
           <div className="px-4 py-3 border-b border-slate-800">
-            <p className="text-xs text-slate-500 uppercase tracking-wider">Workspace</p>
-            <p className="text-sm font-medium text-white truncate">{user.tenantName || 'My Workspace'}</p>
+            <WorkspaceSwitcher />
+          </div>
+
+          {/* Token Balance */}
+          <div className="px-4 py-3 border-b border-slate-800">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Coins className="w-4 h-4 text-yellow-500" />
+                <span className="text-sm text-slate-400">Tokens</span>
+              </div>
+              <span className="text-sm font-semibold text-white">
+                {tokenBalance.toLocaleString()}
+              </span>
+            </div>
+            <button
+              onClick={() => setShowPurchaseModal(true)}
+              className="w-full mt-2 flex items-center justify-center gap-2 px-3 py-2 bg-gradient-to-r from-yellow-500/20 to-orange-500/20 hover:from-yellow-500/30 hover:to-orange-500/30 border border-yellow-500/30 text-yellow-500 text-sm font-medium rounded-lg transition-colors"
+            >
+              <Plus className="w-4 h-4" />
+              Buy Tokens
+            </button>
           </div>
 
           {/* Navigation */}
@@ -191,6 +232,17 @@ export default function DashboardLayout({ children, user }: DashboardLayoutProps
         {/* Page Content */}
         <main className="p-4 lg:p-6">{children}</main>
       </div>
+
+      {/* Token Purchase Modal */}
+      <TokenPurchaseModal
+        isOpen={showPurchaseModal}
+        onClose={() => setShowPurchaseModal(false)}
+        onSuccess={() => {
+          fetchBalance();
+          setShowPurchaseModal(false);
+        }}
+        currentBalance={tokenBalance}
+      />
     </div>
   );
 }

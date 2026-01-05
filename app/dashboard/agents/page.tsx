@@ -1,11 +1,11 @@
 import { Metadata } from 'next';
-import AgentConfigPage from '@/app/components/dashboard/AgentConfigPage';
+import AgentConfigPageNew from '@/app/components/dashboard/AgentConfigPageNew';
 
 export const metadata: Metadata = {
-  title: 'Agent Configuration',
-  description: 'Configure your AI assistant behavior and responses',
+  title: 'Bot Configuration',
+  description: 'Create and manage multiple AI bots with different models',
 };
 
 export default function AgentsPage() {
-  return <AgentConfigPage />;
+  return <AgentConfigPageNew />;
 }

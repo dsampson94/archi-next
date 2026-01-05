@@ -127,8 +127,8 @@ export default function AdminDashboard() {
     );
   }
 
-  // Demo data if no stats
-  const displayStats = stats || {
+  // Memoize display stats to prevent infinite re-renders
+  const displayStats = useMemo(() => stats || {
     tenants: { total: 0, active: 0, trial: 0, churned: 0, newThisMonth: 0 },
     users: { total: 0, activeToday: 0, newThisWeek: 0 },
     messages: { total: 0, thisMonth: 0, avgPerTenant: 0 },
@@ -145,7 +145,7 @@ export default function AdminDashboard() {
       whatsapp: { status: 'healthy' as const, queueSize: 0 },
     },
     planDistribution: [],
-  };
+  }, [stats]);
 
   // Generate demo chart data if not provided
   const messageVolumeData = useMemo(() => {

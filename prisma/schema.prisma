@@ -11,43 +11,52 @@ datasource db {
 }
 
 // ============================================
-// MULTI-TENANT CORE
+// MULTI-TENANT CORE (Workspaces)
 // ============================================
 
 model Tenant {
-  id          String   @id @default(uuid())
-  name        String
-  slug        String   @unique
-  domain      String?
-  logoUrl     String?
+  id           String  @id @default(uuid())
+  name         String
+  slug         String  @unique
+  domain       String?
+  logoUrl      String?
   primaryColor String? @default("#14b8a6")
-  
-  // Subscription & Billing
-  plan        Plan     @default(STARTER)
+
+  // Owner (for multi-workspace per user)
+  ownerId String?
+  owner   User?   @relation("WorkspaceOwner", fields: [ownerId], references: [id])
+
+  // Subscription & Billing (deprecated - using tokens now)
+  plan        Plan         @default(STARTER)
   status      TenantStatus @default(ACTIVE)
   trialEndsAt DateTime?
-  
+
+  // Token Balance for Pay-as-you-go
+  tokenBalance Int @default(1000) // Start with 1000 free tokens
+
   // WhatsApp Configuration
   whatsappNumbers WhatsappNumber[]
-  
-  // Usage Limits
+
+  // Usage Limits (soft limits, tokens override)
   maxDocuments Int @default(50)
   maxMessages  Int @default(1000)
-  
+
   // Timestamps
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   // Relations
-  users       User[]
-  documents   Document[]
-  agents      Agent[]
-  conversations Conversation[]
-  knowledgeBases KnowledgeBase[]
-  auditLogs   AuditLog[]
-  customerContacts CustomerContact[]
-  
+  users             User[]
+  documents         Document[]
+  agents            Agent[]
+  conversations     Conversation[]
+  knowledgeBases    KnowledgeBase[]
+  auditLogs         AuditLog[]
+  customerContacts  CustomerContact[]
+  tokenTransactions TokenTransaction[]
+
   @@index([slug])
+  @@index([ownerId])
 }
 
 model User {
@@ -57,25 +66,26 @@ model User {
   name         String
   avatarUrl    String?
   role         UserRole @default(MEMBER)
-  
+
   // Tenant Association
-  tenantId     String
-  tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
   // Auth
-  emailVerified Boolean @default(false)
+  emailVerified Boolean   @default(false)
   lastLoginAt   DateTime?
-  
+
   // Timestamps
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   // Relations
   uploadedDocuments Document[]
   conversations     Conversation[]
   sentMessages      Message[]
   auditLogs         AuditLog[]
-  
+  ownedWorkspaces   Tenant[]       @relation("WorkspaceOwner")
+
   @@index([email])
   @@index([tenantId])
 }
@@ -85,32 +95,32 @@ model User {
 // ============================================
 
 model WhatsappNumber {
-  id              String   @id @default(uuid())
-  phoneNumber     String   @unique
-  displayName     String
-  
+  id          String @id @default(uuid())
+  phoneNumber String @unique
+  displayName String
+
   // Provider Config
-  provider        WhatsappProvider @default(TWILIO)
-  accountSid      String?
-  authToken       String?  // Encrypted in production
-  webhookSecret   String?
-  
+  provider      WhatsappProvider @default(TWILIO)
+  accountSid    String?
+  authToken     String? // Encrypted in production
+  webhookSecret String?
+
   // Status
-  isActive        Boolean  @default(true)
-  isVerified      Boolean  @default(false)
-  verifiedAt      DateTime?
-  
+  isActive   Boolean   @default(true)
+  isVerified Boolean   @default(false)
+  verifiedAt DateTime?
+
   // Tenant
-  tenantId        String
-  tenant          Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
   // Timestamps
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   // Relations
-  conversations   Conversation[]
-  
+  conversations Conversation[]
+
   @@index([tenantId])
 }
 
@@ -119,26 +129,26 @@ model WhatsappNumber {
 // ============================================
 
 model CustomerContact {
-  id           String   @id @default(uuid())
-  phoneNumber  String   // Customer's WhatsApp number
-  name         String?  // Optional customer name
-  email        String?  // Optional customer email
-  
+  id          String  @id @default(uuid())
+  phoneNumber String // Customer's WhatsApp number
+  name        String? // Optional customer name
+  email       String? // Optional customer email
+
   // Tenant Assignment
-  tenantId     String
-  tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
   // Status
-  isActive     Boolean  @default(true)
-  
+  isActive Boolean @default(true)
+
   // Metadata
-  tags         String[] // For grouping/filtering
-  notes        String?  @db.Text
-  
+  tags  String[] // For grouping/filtering
+  notes String?  @db.Text
+
   // Timestamps
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@unique([phoneNumber, tenantId])
   @@index([tenantId])
   @@index([phoneNumber])
@@ -149,142 +159,184 @@ model CustomerContact {
 // ============================================
 
 model KnowledgeBase {
-  id          String   @id @default(uuid())
+  id          String  @id @default(uuid())
   name        String
   description String?
-  
+
   // Access Control
-  isPublic    Boolean  @default(false)  // Public = customers, Private = internal
-  
+  isPublic Boolean @default(false) // Public = customers, Private = internal
+
   // Tenant
-  tenantId    String
-  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
   // Timestamps
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   // Relations
-  documents   Document[]
-  agents      Agent[]
-  
+  documents Document[]
+  agents    Agent[]
+
   @@index([tenantId])
 }
 
 model Document {
-  id              String   @id @default(uuid())
-  title           String
-  description     String?
-  
+  id          String  @id @default(uuid())
+  title       String
+  description String?
+
   // File Info
-  fileName        String
-  fileType        FileType
-  fileSize        Int       // bytes
-  fileUrl         String?   // S3/Storage URL
-  
+  fileName String
+  fileType FileType
+  fileSize Int // bytes
+  fileUrl  String? // S3/Storage URL
+
   // Processing Status
-  status          DocumentStatus @default(PENDING)
-  processedAt     DateTime?
-  errorMessage    String?
-  
+  status       DocumentStatus @default(PENDING)
+  processedAt  DateTime?
+  errorMessage String?
+
   // Content
-  rawContent      String?   @db.Text
-  chunkCount      Int       @default(0)
-  
+  rawContent String? @db.Text
+  chunkCount Int     @default(0)
+
   // Metadata
-  version         Int       @default(1)
-  tags            String[]
-  
+  version Int      @default(1)
+  tags    String[]
+
   // Relations
-  tenantId        String
-  tenant          Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
   knowledgeBaseId String?
   knowledgeBase   KnowledgeBase? @relation(fields: [knowledgeBaseId], references: [id])
-  
-  uploadedById    String?
-  uploadedBy      User?     @relation(fields: [uploadedById], references: [id])
-  
-  chunks          DocumentChunk[]
-  
+
+  uploadedById String?
+  uploadedBy   User?   @relation(fields: [uploadedById], references: [id])
+
+  chunks DocumentChunk[]
+
   // Timestamps
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@index([tenantId])
   @@index([knowledgeBaseId])
   @@index([status])
 }
 
 model DocumentChunk {
-  id          String   @id @default(uuid())
-  content     String   @db.Text
-  
+  id      String @id @default(uuid())
+  content String @db.Text
+
   // Vector Embedding
-  embedding   Float[]  // For Pinecone/pgvector
-  
+  embedding Float[] // For Pinecone/pgvector
+
   // Position Info
-  chunkIndex  Int
-  pageNumber  Int?
-  startChar   Int?
-  endChar     Int?
-  
+  chunkIndex Int
+  pageNumber Int?
+  startChar  Int?
+  endChar    Int?
+
   // Metadata
-  metadata    Json?
-  
+  metadata Json?
+
   // Relations
-  documentId  String
-  document    Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
-  
-  citations   Citation[]
-  
+  documentId String
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  citations Citation[]
+
   // Timestamps
-  createdAt   DateTime @default(now())
-  
+  createdAt DateTime @default(now())
+
   @@index([documentId])
 }
 
 // ============================================
-// AI AGENTS
+// AI AGENTS (Multi-model support)
 // ============================================
 
 model Agent {
-  id              String   @id @default(uuid())
-  name            String
-  description     String?
-  
+  id          String  @id @default(uuid())
+  name        String
+  description String?
+
   // Agent Configuration
-  systemPrompt    String   @db.Text
-  responseRules   String?  @db.Text
-  tone            String?  @default("professional")
-  temperature     Float    @default(0.7)
-  model           String   @default("gpt-4-turbo-preview")
-  
+  systemPrompt  String  @db.Text
+  responseRules String? @db.Text
+  tone          String? @default("professional")
+  temperature   Float   @default(0.7)
+
+  // LLM Model Configuration (multi-model support)
+  provider LLMProvider @default(OPENAI)
+  model    String      @default("gpt-4-turbo-preview")
+
   // Behavior Settings
-  maxTokens       Int      @default(1024)
+  maxTokens           Int   @default(1024)
   confidenceThreshold Float @default(0.7) // Below this, escalate to human
-  
+
   // Greeting & Fallbacks
   greeting        String?
   greetingMessage String?
   handoffMessage  String?
-  fallbackMessage String?  @default("I'm not sure about that. Let me connect you with someone who can help.")
-  
+  fallbackMessage String? @default("I'm not sure about that. Let me connect you with someone who can help.")
+
   // Status
-  isActive        Boolean  @default(true)
-  
+  isActive Boolean @default(true)
+
   // Relations
-  tenantId        String
-  tenant          Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  
-  knowledgeBases  KnowledgeBase[]
-  conversations   Conversation[]
-  
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  knowledgeBases KnowledgeBase[]
+  conversations  Conversation[]
+
   // Timestamps
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@index([tenantId])
+}
+
+// ============================================
+// TOKEN TRANSACTIONS (Pay-as-you-go billing)
+// ============================================
+
+model TokenTransaction {
+  id String @id @default(uuid())
+
+  // Transaction details
+  type    TransactionType
+  amount  Int // Positive for purchases, negative for usage
+  balance Int // Balance after transaction
+
+  // Purchase details (for PURCHASE type)
+  paypalOrderId String?
+  paypalPayerId String?
+  paymentAmount Float? // USD amount paid
+  tokenPackage  String? // e.g., "5000", "25000", "100000"
+
+  // Usage details (for USAGE type)
+  agentId      String?
+  model        String? // e.g., "gpt-4-turbo", "claude-3-opus"
+  inputTokens  Int?
+  outputTokens Int?
+
+  // Description
+  description String?
+
+  // Relations
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  // Timestamps
+  createdAt DateTime @default(now())
+
+  @@index([tenantId])
+  @@index([type])
+  @@index([createdAt])
 }
 
 // ============================================
@@ -292,102 +344,102 @@ model Agent {
 // ============================================
 
 model Conversation {
-  id              String   @id @default(uuid())
-  
+  id String @id @default(uuid())
+
   // External User Info (WhatsApp contact)
-  externalUserId  String   // WhatsApp phone number
+  externalUserId   String // WhatsApp phone number
   externalUserName String?
-  
+
   // Status
-  status          ConversationStatus @default(ACTIVE)
-  isHandedOff     Boolean  @default(false)
-  handedOffAt     DateTime?
-  resolvedAt      DateTime?
-  
+  status      ConversationStatus @default(ACTIVE)
+  isHandedOff Boolean            @default(false)
+  handedOffAt DateTime?
+  resolvedAt  DateTime?
+
   // Relations
-  tenantId        String
-  tenant          Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
   whatsappNumberId String?
-  whatsappNumber  WhatsappNumber? @relation(fields: [whatsappNumberId], references: [id])
-  
-  agentId         String?
-  agent           Agent?   @relation(fields: [agentId], references: [id])
-  
-  assignedToId    String?  // Human agent assignment
-  assignedTo      User?    @relation(fields: [assignedToId], references: [id])
-  
-  messages        Message[]
-  
+  whatsappNumber   WhatsappNumber? @relation(fields: [whatsappNumberId], references: [id])
+
+  agentId String?
+  agent   Agent?  @relation(fields: [agentId], references: [id])
+
+  assignedToId String? // Human agent assignment
+  assignedTo   User?   @relation(fields: [assignedToId], references: [id])
+
+  messages Message[]
+
   // Metadata
-  metadata        Json?    // Custom fields
-  
+  metadata Json? // Custom fields
+
   // Timestamps
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@index([tenantId])
   @@index([externalUserId])
   @@index([status])
 }
 
 model Message {
-  id              String   @id @default(uuid())
-  
+  id String @id @default(uuid())
+
   // Content
-  content         String   @db.Text
-  contentType     MessageContentType @default(TEXT)
-  
+  content     String             @db.Text
+  contentType MessageContentType @default(TEXT)
+
   // Direction & Sender
-  direction       MessageDirection
-  senderType      SenderType
-  
+  direction  MessageDirection
+  senderType SenderType
+
   // Voice Note
-  audioUrl        String?
-  audioDuration   Int?     // seconds
-  transcription   String?  @db.Text
-  
+  audioUrl      String?
+  audioDuration Int? // seconds
+  transcription String? @db.Text
+
   // AI Response Metadata
-  confidence      Float?
-  tokensUsed      Int?
-  latencyMs       Int?
-  
+  confidence Float?
+  tokensUsed Int?
+  latencyMs  Int?
+
   // Human Agent (when senderType is HUMAN)
-  humanAgentId    String?
-  humanAgent      User?    @relation(fields: [humanAgentId], references: [id])
-  
+  humanAgentId String?
+  humanAgent   User?   @relation(fields: [humanAgentId], references: [id])
+
   // Metadata
-  metadata        Json?
-  
+  metadata Json?
+
   // Relations
-  conversationId  String
-  conversation    Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  
-  citations       Citation[]
-  
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  citations Citation[]
+
   // Timestamps
-  createdAt       DateTime @default(now())
-  
+  createdAt DateTime @default(now())
+
   @@index([conversationId])
   @@index([createdAt])
 }
 
 model Citation {
-  id          String   @id @default(uuid())
-  
+  id String @id @default(uuid())
+
   // The text snippet used
-  snippet     String   @db.Text
-  
+  snippet String @db.Text
+
   // Relations
-  messageId   String
-  message     Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
-  
-  chunkId     String
-  chunk       DocumentChunk @relation(fields: [chunkId], references: [id], onDelete: Cascade)
-  
+  messageId String
+  message   Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  chunkId String
+  chunk   DocumentChunk @relation(fields: [chunkId], references: [id], onDelete: Cascade)
+
   // Timestamps
-  createdAt   DateTime @default(now())
-  
+  createdAt DateTime @default(now())
+
   @@index([messageId])
 }
 
@@ -396,29 +448,29 @@ model Citation {
 // ============================================
 
 model AuditLog {
-  id          String   @id @default(uuid())
-  action      String   // e.g., "document.upload", "conversation.handoff"
-  entity      String   // e.g., "Document", "Conversation"
-  entityId    String?
-  
+  id       String  @id @default(uuid())
+  action   String // e.g., "document.upload", "conversation.handoff"
+  entity   String // e.g., "Document", "Conversation"
+  entityId String?
+
   // Changes
-  oldValues   Json?
-  newValues   Json?
-  
+  oldValues Json?
+  newValues Json?
+
   // Context
-  ipAddress   String?
-  userAgent   String?
-  
+  ipAddress String?
+  userAgent String?
+
   // Relations
-  tenantId    String
-  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  
-  userId      String?
-  user        User?    @relation(fields: [userId], references: [id])
-  
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id])
+
   // Timestamps
-  createdAt   DateTime @default(now())
-  
+  createdAt DateTime @default(now())
+
   @@index([tenantId])
   @@index([action])
   @@index([createdAt])
@@ -491,7 +543,23 @@ enum MessageDirection {
 }
 
 enum SenderType {
-  USER       // External WhatsApp user
-  AI         // Archi AI response
-  HUMAN      // Human agent response
+  USER // External WhatsApp user
+  AI // Archi AI response
+  HUMAN // Human agent response
+}
+
+enum LLMProvider {
+  OPENAI
+  ANTHROPIC
+  GOOGLE
+  MISTRAL
+  GROQ
+}
+
+enum TransactionType {
+  PURCHASE // Token purchase via PayPal
+  USAGE // Token usage for API calls
+  BONUS // Free bonus tokens
+  REFUND // Refund
+  ADJUSTMENT // Manual adjustment
 }
