@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { jwtVerify } from 'jose';
 import prisma from '@/app/lib/prisma';
+import { clearTwilioCache } from '@/app/lib/twilio';
 
 const JWT_SECRET = new TextEncoder().encode(
   process.env.JWT_SECRET || 'your-secret-key-change-in-production'
@@ -68,7 +69,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { phoneNumber, displayName } = body;
+    const { phoneNumber, displayName, accountSid, authToken } = body;
 
     if (!phoneNumber) {
       return NextResponse.json({ error: 'Phone number is required' }, { status: 400 });
@@ -82,34 +83,53 @@ export async function POST(request: NextRequest) {
       where: { tenantId: user.tenantId },
     });
 
+    // Build update data - only include credentials if provided
+    const updateData: Record<string, unknown> = {
+      phoneNumber: cleanNumber,
+      displayName: displayName || '',
+      updatedAt: new Date(),
+    };
+
+    // Only update credentials if explicitly provided (allows partial updates)
+    if (accountSid !== undefined) {
+      updateData.accountSid = accountSid || null;
+    }
+    if (authToken !== undefined) {
+      updateData.authToken = authToken || null;
+    }
+
     let config;
     if (existing) {
       config = await prisma.whatsappNumber.update({
         where: { id: existing.id },
-        data: {
-          phoneNumber: cleanNumber,
-          displayName,
-          updatedAt: new Date(),
-        },
+        data: updateData,
       });
     } else {
       config = await prisma.whatsappNumber.create({
         data: {
           phoneNumber: cleanNumber,
-          displayName,
+          displayName: displayName || '',
+          accountSid: accountSid || null,
+          authToken: authToken || null,
           tenantId: user.tenantId,
           isActive: true,
         },
       });
     }
 
-    // Create audit log
+    // Clear cached Twilio client for this tenant since credentials may have changed
+    clearTwilioCache(user.tenantId);
+
+    // Create audit log (don't log sensitive credentials)
     await prisma.auditLog.create({
       data: {
         action: existing ? 'whatsapp.config_update' : 'whatsapp.config_create',
         entity: 'WhatsappNumber',
         entityId: config.id,
-        newValues: { phoneNumber: cleanNumber },
+        newValues: { 
+          phoneNumber: cleanNumber,
+          hasCustomCredentials: !!(accountSid && authToken),
+        },
         tenantId: user.tenantId,
         userId: user.userId,
       },
@@ -122,6 +142,7 @@ export async function POST(request: NextRequest) {
         displayName: config.displayName || '',
         isActive: config.isActive,
         verified: config.verifiedAt !== null,
+        hasCustomCredentials: !!(config.accountSid && config.authToken),
       },
     });
   } catch (error) {

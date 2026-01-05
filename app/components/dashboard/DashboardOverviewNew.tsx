@@ -16,6 +16,7 @@ import {
 } from 'react-icons/hi';
 import { FaWhatsapp } from 'react-icons/fa';
 import OnboardingWizard from './OnboardingWizard';
+import SetupChecklist from './SetupChecklist';
 
 interface DashboardStats {
   documents: {
@@ -216,32 +217,9 @@ export default function DashboardOverview() {
         tenantId="demo-tenant"
       />
 
-      {/* Setup Incomplete Banner */}
+      {/* Setup Checklist - Shows progress for new users */}
       {isNewUser && !showOnboarding && (
-        <motion.div
-          initial={{ opacity: 0, y: -20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="bg-archi-500/5 border border-archi-500/20 rounded-xl p-6"
-        >
-          <div className="flex items-start gap-4">
-            <div className="w-10 h-10 rounded-lg bg-archi-500/10 flex items-center justify-center flex-shrink-0">
-              <HiOutlineLightningBolt className="w-5 h-5 text-archi-400" />
-            </div>
-            <div className="flex-1">
-              <h3 className="font-semibold text-white mb-1">Complete Your Setup</h3>
-              <p className="text-sm text-slate-400 mb-3">
-                Finish setting up your AI assistant to start handling customer queries.
-              </p>
-              <button
-                onClick={() => setShowOnboarding(true)}
-                className="inline-flex items-center gap-2 px-4 py-2 bg-archi-500 hover:bg-archi-400 text-white rounded-lg transition-colors text-sm font-medium"
-              >
-                Continue Setup
-                <HiOutlineArrowRight className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-        </motion.div>
+        <SetupChecklist onStartWizard={() => setShowOnboarding(true)} />
       )}
 
       {/* Welcome Header */}

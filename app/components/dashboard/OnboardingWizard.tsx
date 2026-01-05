@@ -584,7 +584,7 @@ export default function OnboardingWizard({ isOpen, onClose, tenantId }: Onboardi
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Customer Phone Numbers (one per line)
+                  Customer Phone Numbers (one per line) - Optional
                 </label>
                 <textarea
                   value={customerNumbers}
@@ -592,7 +592,7 @@ export default function OnboardingWizard({ isOpen, onClose, tenantId }: Onboardi
                     setCustomerNumbers(e.target.value);
                     clearError();
                   }}
-                  rows={4}
+                  rows={3}
                   placeholder="+27821234567&#10;+27821234568"
                   className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-teal-500 font-mono text-xs ${
                     stepError?.field === 'customerNumbers' ? 'border-red-500 bg-red-50' : 'border-gray-300'
@@ -602,16 +602,24 @@ export default function OnboardingWizard({ isOpen, onClose, tenantId }: Onboardi
                   <p className="text-xs text-red-600 mt-1">{stepError.message}</p>
                 ) : (
                   <p className="text-xs text-gray-500 mt-1">
-                    Include country code (e.g., +27 for South Africa). Leave blank to skip.
+                    Include country code (e.g., +27 for South Africa). Leave blank to add later.
                   </p>
                 )}
+              </div>
+
+              {/* WhatsApp Setup Reminder */}
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                <p className="text-xs text-amber-800">
+                  <strong>📱 Important:</strong> To send messages, connect your WhatsApp Business number in{' '}
+                  <span className="font-medium">Dashboard → WhatsApp</span> after completing setup.
+                </p>
               </div>
 
               <div className="bg-green-50 border border-green-200 rounded-lg p-3 text-center">
                 <Rocket className="mx-auto text-green-600 mb-1" size={24} />
                 <h4 className="font-semibold text-green-900 text-sm">Almost Ready!</h4>
                 <p className="text-xs text-green-800">
-                  Click "Complete Setup" to launch your AI assistant.
+                  Click "Complete Setup" to create your AI assistant.
                 </p>
               </div>
             </div>

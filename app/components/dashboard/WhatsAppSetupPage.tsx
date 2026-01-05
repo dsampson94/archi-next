@@ -24,6 +24,9 @@ interface WhatsAppConfig {
   displayName: string;
   isActive: boolean;
   verified: boolean;
+  hasCustomCredentials?: boolean;
+  accountSid?: string;
+  authToken?: string;
 }
 
 interface SetupStep {
@@ -40,6 +43,8 @@ export default function WhatsAppSetupPage() {
     displayName: '',
     isActive: false,
     verified: false,
+    accountSid: '',
+    authToken: '',
   });
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setSaving] = useState(false);
@@ -52,6 +57,8 @@ export default function WhatsAppSetupPage() {
   const [validationErrors, setValidationErrors] = useState<{
     phoneNumber?: string;
     displayName?: string;
+    accountSid?: string;
+    authToken?: string;
   }>({});
 
   // Webhook URL for this tenant
@@ -103,6 +110,16 @@ export default function WhatsAppSetupPage() {
     
     if (!config.displayName || config.displayName.trim().length < 2) {
       errors.displayName = 'Display name must be at least 2 characters';
+    }
+
+    // Validate credentials if either is provided
+    if (config.accountSid || config.authToken) {
+      if (!config.accountSid || !config.accountSid.startsWith('AC')) {
+        errors.accountSid = 'Account SID should start with "AC"';
+      }
+      if (!config.authToken || config.authToken.length < 20) {
+        errors.authToken = 'Auth Token is required when Account SID is provided';
+      }
     }
     
     setValidationErrors(errors);
@@ -545,57 +562,88 @@ export default function WhatsAppSetupPage() {
               </div>
             </div>
 
-            {/* Step 4: Configure Environment Variables */}
+            {/* Step 4: Enter Twilio Credentials */}
             <div className="flex gap-5">
               <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-archi-500 to-archi-600 flex items-center justify-center shrink-0 text-base font-bold text-white shadow-lg">
                 4
               </div>
               <div className="flex-1">
-                <h3 className="font-semibold text-white text-base mb-2">Set Environment Variables</h3>
-                <p className="text-sm text-slate-400 mb-3">
-                  Add these variables to your hosting environment (Vercel, Heroku, etc.):
-                </p>
-                <div className="space-y-3">
-                  <button
-                    onClick={() => setShowEnvVars(!showEnvVars)}
-                    className="w-full flex items-center justify-between p-3 bg-slate-800 hover:bg-slate-750 border border-slate-700 rounded-lg transition-colors text-left"
+                <h3 className="font-semibold text-white text-base mb-2">Enter Twilio Credentials</h3>
+                <p className="text-sm text-slate-400 mb-4">
+                  Enter your Twilio Account SID and Auth Token from the{' '}
+                  <a 
+                    href="https://console.twilio.com" 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="text-archi-400 hover:text-archi-300 underline"
                   >
-                    <span className="text-sm font-medium text-slate-200">
-                      {showEnvVars ? 'Hide' : 'Show'} Environment Variables
-                    </span>
-                    {showEnvVars ? (
-                      <HiOutlineChevronUp className="w-5 h-5 text-slate-400" />
-                    ) : (
-                      <HiOutlineChevronDown className="w-5 h-5 text-slate-400" />
+                    Twilio Console
+                  </a>.
+                </p>
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-300 mb-2">
+                      Account SID <span className="text-red-400">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={config.accountSid || ''}
+                      onChange={(e) => {
+                        setConfig({ ...config, accountSid: e.target.value });
+                        setValidationErrors({ ...validationErrors, accountSid: undefined });
+                      }}
+                      placeholder="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                      className={`w-full px-4 py-3 bg-slate-800 border rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 transition-all font-mono text-sm ${
+                        validationErrors.accountSid
+                          ? 'border-red-500 focus:ring-red-500/50'
+                          : 'border-slate-700 focus:ring-archi-500/50'
+                      }`}
+                    />
+                    {validationErrors.accountSid && (
+                      <p className="mt-1 text-xs text-red-400 flex items-center gap-1">
+                        <HiOutlineExclamationCircle className="w-4 h-4" />
+                        {validationErrors.accountSid}
+                      </p>
                     )}
-                  </button>
+                    <p className="mt-1 text-xs text-slate-500">
+                      Starts with "AC" - found on your Twilio Console dashboard
+                    </p>
+                  </div>
                   
-                  {showEnvVars && (
-                    <motion.div
-                      initial={{ opacity: 0, height: 0 }}
-                      animate={{ opacity: 1, height: 'auto' }}
-                      exit={{ opacity: 0, height: 0 }}
-                      className="overflow-hidden"
-                    >
-                      <div className="p-4 bg-slate-800 border border-slate-700 rounded-lg">
-                        <code className="block text-sm text-slate-300 font-mono whitespace-pre">
-{environment === 'sandbox' 
-  ? `TWILIO_ACCOUNT_SID=your_account_sid_here
-TWILIO_AUTH_TOKEN=your_auth_token_here
-TWILIO_WHATSAPP_NUMBER=+14155238886`
-  : `TWILIO_ACCOUNT_SID=your_account_sid_here
-TWILIO_AUTH_TOKEN=your_auth_token_here
-TWILIO_WHATSAPP_NUMBER=your_approved_whatsapp_number`}
-                        </code>
-                      </div>
-                      <div className="mt-2 p-3 bg-red-500/10 border border-red-500/20 rounded-lg">
-                        <p className="text-xs text-red-300 flex items-start gap-2">
-                          <HiOutlineShieldCheck className="w-4 h-4 shrink-0 mt-0.5" />
-                          <span><strong>Security:</strong> Never commit these values to Git. Use your hosting platform's environment variable settings.</span>
-                        </p>
-                      </div>
-                    </motion.div>
-                  )}
+                  <div>
+                    <label className="block text-sm font-medium text-slate-300 mb-2">
+                      Auth Token <span className="text-red-400">*</span>
+                    </label>
+                    <input
+                      type="password"
+                      value={config.authToken || ''}
+                      onChange={(e) => {
+                        setConfig({ ...config, authToken: e.target.value });
+                        setValidationErrors({ ...validationErrors, authToken: undefined });
+                      }}
+                      placeholder="••••••••••••••••••••••••••••••••"
+                      className={`w-full px-4 py-3 bg-slate-800 border rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 transition-all font-mono text-sm ${
+                        validationErrors.authToken
+                          ? 'border-red-500 focus:ring-red-500/50'
+                          : 'border-slate-700 focus:ring-archi-500/50'
+                      }`}
+                    />
+                    {validationErrors.authToken && (
+                      <p className="mt-1 text-xs text-red-400 flex items-center gap-1">
+                        <HiOutlineExclamationCircle className="w-4 h-4" />
+                        {validationErrors.authToken}
+                      </p>
+                    )}
+                    <p className="mt-1 text-xs text-slate-500">
+                      Your secret Auth Token - keep this secure
+                    </p>
+                  </div>
+                </div>
+                <div className="mt-3 p-3 bg-green-500/10 border border-green-500/20 rounded-lg">
+                  <p className="text-xs text-green-300 flex items-start gap-2">
+                    <HiOutlineShieldCheck className="w-4 h-4 shrink-0 mt-0.5" />
+                    <span><strong>Secure storage:</strong> Your credentials are encrypted and stored securely. They are only used to send messages on your behalf.</span>
+                  </p>
                 </div>
               </div>
             </div>

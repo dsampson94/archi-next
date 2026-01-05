@@ -82,7 +82,7 @@ export async function PUT(request: NextRequest) {
     }
 
     // Only admin/owner can update settings
-    if (user.role !== 'admin' && user.role !== 'owner') {
+    if (user.role !== 'ADMIN' && user.role !== 'OWNER') {
       return NextResponse.json({ error: 'Permission denied' }, { status: 403 });
     }
 
