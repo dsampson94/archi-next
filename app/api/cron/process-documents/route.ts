@@ -5,25 +5,34 @@ import { processDocument } from '@/app/lib/document-processor';
 /**
  * Cron job to process pending documents
  * Vercel Cron: every 5 minutes
- * Or call manually: GET /api/cron/process-documents
+ * Can also be called manually: GET /api/cron/process-documents
+ * 
+ * NOTE: Vercel Cron doesn't send Authorization header - it uses its own verification
+ * For manual calls, optionally check CRON_SECRET
  */
 export async function GET(request: NextRequest) {
-  // Verify cron secret in production
+  // For manual calls (not from Vercel cron), optionally check secret
   const authHeader = request.headers.get('authorization');
   const cronSecret = process.env.CRON_SECRET;
+  const userAgent = request.headers.get('user-agent') || '';
+  const isVercelCron = userAgent.includes('vercel-cron');
   
-  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
+  // Only check auth for non-Vercel-cron requests if CRON_SECRET is set
+  if (cronSecret && !isVercelCron && authHeader !== `Bearer ${cronSecret}`) {
+    console.log('[Cron] Unauthorized request - not from Vercel cron and missing/invalid secret');
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
   
+  console.log(`[Cron] Document processing started (source: ${isVercelCron ? 'Vercel Cron' : 'Manual'})`);
+  
   try {
-    // Find pending documents (not older than 24 hours to avoid processing stuck ones forever)
+    // Find pending documents (not older than 24 hours)
     const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
-    const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
+    const twoMinutesAgo = new Date(Date.now() - 2 * 60 * 1000);
     
     // Find documents that are:
     // 1. PENDING status (new uploads)
-    // 2. PROCESSING status but updated more than 10 minutes ago (stuck documents)
+    // 2. PROCESSING status but updated more than 2 minutes ago (stuck documents)
     const pendingDocuments = await prisma.document.findMany({
       where: {
         OR: [
@@ -36,7 +45,7 @@ export async function GET(request: NextRequest) {
           {
             status: 'PROCESSING',
             updatedAt: {
-              lt: tenMinutesAgo,
+              lt: twoMinutesAgo,
             },
             createdAt: {
               gte: oneDayAgo,
@@ -47,7 +56,7 @@ export async function GET(request: NextRequest) {
       orderBy: {
         createdAt: 'asc',
       },
-      take: 5, // Process 5 at a time to avoid timeout
+      take: 2, // Process only 2 at a time to avoid 60s timeout
     });
     
     // Reset stuck PROCESSING documents back to PENDING

@@ -171,21 +171,51 @@ export default function DocumentsPage() {
 
   const handleReprocess = async (documentId: string) => {
     try {
-      const response = await fetch(`/api/documents/${documentId}`, {
+      // Show processing state immediately
+      setDocuments((prev) =>
+        prev.map((d) =>
+          d.id === documentId ? { ...d, status: 'PROCESSING' as const, errorMessage: undefined } : d
+        )
+      );
+
+      // Use the new /retry endpoint which processes synchronously
+      const response = await fetch(`/api/documents/${documentId}/retry`, {
         method: 'POST',
         credentials: 'include',
       });
 
-      if (response.ok) {
-        // Update status locally
+      const result = await response.json();
+
+      if (response.ok && result.success) {
+        // Update to completed
         setDocuments((prev) =>
           prev.map((d) =>
-            d.id === documentId ? { ...d, status: 'PENDING' as const } : d
+            d.id === documentId
+              ? { ...d, status: 'COMPLETED' as const, chunkCount: result.chunkCount }
+              : d
+          )
+        );
+        // Refresh stats
+        fetchDocuments();
+      } else {
+        // Update to failed with error message
+        setDocuments((prev) =>
+          prev.map((d) =>
+            d.id === documentId
+              ? { ...d, status: 'FAILED' as const, errorMessage: result.error || 'Processing failed' }
+              : d
           )
         );
       }
     } catch (error) {
       console.error('Failed to reprocess document:', error);
+      setDocuments((prev) =>
+        prev.map((d) =>
+          d.id === documentId
+            ? { ...d, status: 'FAILED' as const, errorMessage: 'Network error - please try again' }
+            : d
+        )
+      );
     }
   };
 
