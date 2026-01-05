@@ -3,7 +3,7 @@ import { cookies } from 'next/headers';
 import { jwtVerify } from 'jose';
 import prisma from '@/app/lib/prisma';
 import { processDocument, extractTextFromBuffer } from '@/app/lib/document-processor';
-import { uploadFile, generateFileKey } from '@/app/lib/s3';
+import { uploadFile, generateFileKey, isStorageConfigured } from '@/app/lib/s3';
 
 const JWT_SECRET = new TextEncoder().encode(
   process.env.JWT_SECRET || 'your-secret-key-change-in-production'
@@ -158,6 +158,7 @@ export async function POST(request: NextRequest) {
       // Read file content
       const buffer = Buffer.from(await file.arrayBuffer());
       let rawContent: string | null = null;
+      let fileUrl: string | null = null;
       
       // Try to extract text immediately for supported types
       try {
@@ -166,10 +167,31 @@ export async function POST(request: NextRequest) {
         // Will be processed later from fileUrl
       }
       
-      // Upload to S3
-      const fileKey = generateFileKey(auth.tenantId, file.name);
-      const uploadResult = await uploadFile(buffer, fileKey, file.type);
-      const fileUrl = uploadResult.url;
+      // Upload to S3 if configured, otherwise store content directly
+      if (isStorageConfigured()) {
+        try {
+          const fileKey = generateFileKey(auth.tenantId, file.name, {
+            type: 'documents',
+          });
+          const uploadResult = await uploadFile(buffer, fileKey, file.type);
+          fileUrl = uploadResult.url;
+        } catch (error) {
+          console.error('S3 upload failed:', error);
+          // Continue without file URL - we have the raw content
+          if (!rawContent) {
+            return NextResponse.json(
+              { error: 'File upload failed and could not extract text content. Please check S3 configuration.' },
+              { status: 500 }
+            );
+          }
+        }
+      } else {
+        // No S3 configured - store as data URL for small files or just use raw content
+        if (file.size < 5 * 1024 * 1024) { // 5MB limit for data URLs
+          const base64 = buffer.toString('base64');
+          fileUrl = `data:${file.type};base64,${base64}`;
+        }
+      }
       
       // Create document record
       const document = await prisma.document.create({

@@ -339,69 +339,98 @@ export default function LandingPage() {
 
       {/* Pricing Preview */}
       <section id="pricing" className="py-20 px-4 sm:px-6 lg:px-8 bg-slate-900/50">
-        <div className="max-w-5xl mx-auto">
+        <div className="max-w-6xl mx-auto">
           <div className="text-center mb-16">
-            <h2 className="text-3xl sm:text-4xl font-bold">Simple, Transparent Pricing</h2>
-            <p className="mt-4 text-slate-400">No hidden fees. No enterprise sales calls. Just results.</p>
+            <h2 className="text-3xl sm:text-4xl font-bold">Pay Only for What You Use</h2>
+            <p className="mt-4 text-slate-400">No subscriptions. No commitments. Per-message pricing.</p>
           </div>
 
-          <div className="grid md:grid-cols-3 gap-6">
-            {/* Starter */}
-            <div className="p-6 rounded-2xl bg-slate-800/30 border border-slate-700/50">
-              <h3 className="text-lg font-semibold">Starter</h3>
-              <div className="mt-4 mb-6">
-                <span className="text-3xl font-bold">R3,000</span>
-                <span className="text-slate-400">/month</span>
+          {/* How it works */}
+          <div className="mb-12 p-6 rounded-2xl bg-slate-800/30 border border-slate-700/50">
+            <h3 className="text-lg font-semibold mb-4 text-center">How Pricing Works</h3>
+            <div className="grid sm:grid-cols-3 gap-6 text-center">
+              <div>
+                <div className="text-2xl mb-2">💬</div>
+                <h4 className="font-medium text-archi-400">Per Message</h4>
+                <p className="text-sm text-slate-400 mt-1">Pay only when your bot responds</p>
               </div>
-              <ul className="space-y-3 text-sm text-slate-300 mb-8">
-                <li className="flex items-center gap-2"><HiOutlineCheck className="text-archi-400" /> 1 WhatsApp number</li>
-                <li className="flex items-center gap-2"><HiOutlineCheck className="text-archi-400" /> 50 documents</li>
-                <li className="flex items-center gap-2"><HiOutlineCheck className="text-archi-400" /> 1,000 messages/month</li>
-                <li className="flex items-center gap-2"><HiOutlineCheck className="text-archi-400" /> Basic analytics</li>
-              </ul>
-              <Link href="/auth?plan=starter" className="block w-full py-3 text-center rounded-lg border border-slate-600 hover:bg-slate-800/50 transition-all text-sm font-medium">
-                Get Started
-              </Link>
+              <div>
+                <div className="text-2xl mb-2">🤖</div>
+                <h4 className="font-medium text-archi-400">Choose Your Model</h4>
+                <p className="text-sm text-slate-400 mt-1">GPT-4, Claude, Gemini & more</p>
+              </div>
+              <div>
+                <div className="text-2xl mb-2">💰</div>
+                <h4 className="font-medium text-archi-400">Transparent Costs</h4>
+                <p className="text-sm text-slate-400 mt-1">See exact costs per message</p>
+              </div>
             </div>
+          </div>
 
-            {/* Professional */}
-            <div className="p-6 rounded-2xl bg-archi-500/10 border-2 border-archi-500/50 relative">
+          {/* Popular Models Pricing */}
+          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+            {/* GPT-4o Mini - Most Popular */}
+            <div className="p-5 rounded-2xl bg-archi-500/10 border-2 border-archi-500/50 relative">
               <span className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-1 bg-archi-500 text-white text-xs font-medium rounded-full">
                 Most Popular
               </span>
-              <h3 className="text-lg font-semibold">Professional</h3>
-              <div className="mt-4 mb-6">
-                <span className="text-3xl font-bold">R7,500</span>
-                <span className="text-slate-400">/month</span>
+              <h3 className="text-sm font-medium text-slate-400">GPT-4o Mini</h3>
+              <div className="mt-2 mb-3">
+                <span className="text-2xl font-bold">~R0.03</span>
+                <span className="text-slate-400 text-sm">/message</span>
               </div>
-              <ul className="space-y-3 text-sm text-slate-300 mb-8">
-                <li className="flex items-center gap-2"><HiOutlineCheck className="text-archi-400" /> 3 WhatsApp numbers</li>
-                <li className="flex items-center gap-2"><HiOutlineCheck className="text-archi-400" /> Unlimited documents</li>
-                <li className="flex items-center gap-2"><HiOutlineCheck className="text-archi-400" /> 5,000 messages/month</li>
-                <li className="flex items-center gap-2"><HiOutlineCheck className="text-archi-400" /> Voice notes</li>
-                <li className="flex items-center gap-2"><HiOutlineCheck className="text-archi-400" /> Human handoff</li>
-              </ul>
-              <Link href="/auth?plan=professional" className="block w-full py-3 text-center rounded-lg bg-archi-500 hover:bg-archi-400 transition-all text-sm font-medium">
-                Get Started
-              </Link>
+              <p className="text-xs text-slate-400">Fast, smart, and affordable</p>
             </div>
 
-            {/* Enterprise */}
-            <div className="p-6 rounded-2xl bg-slate-800/30 border border-slate-700/50">
-              <h3 className="text-lg font-semibold">Enterprise</h3>
-              <div className="mt-4 mb-6">
-                <span className="text-3xl font-bold">Custom</span>
+            {/* Claude 3 Haiku */}
+            <div className="p-5 rounded-2xl bg-slate-800/30 border border-slate-700/50">
+              <h3 className="text-sm font-medium text-slate-400">Claude 3 Haiku</h3>
+              <div className="mt-2 mb-3">
+                <span className="text-2xl font-bold">~R0.05</span>
+                <span className="text-slate-400 text-sm">/message</span>
               </div>
-              <ul className="space-y-3 text-sm text-slate-300 mb-8">
-                <li className="flex items-center gap-2"><HiOutlineCheck className="text-archi-400" /> Unlimited everything</li>
-                <li className="flex items-center gap-2"><HiOutlineCheck className="text-archi-400" /> Custom integrations</li>
-                <li className="flex items-center gap-2"><HiOutlineCheck className="text-archi-400" /> SLA & Priority support</li>
-                <li className="flex items-center gap-2"><HiOutlineCheck className="text-archi-400" /> On-premise option</li>
-              </ul>
-              <Link href="/contact" className="block w-full py-3 text-center rounded-lg border border-slate-600 hover:bg-slate-800/50 transition-all text-sm font-medium">
-                Contact Sales
-              </Link>
+              <p className="text-xs text-slate-400">Lightning fast responses</p>
             </div>
+
+            {/* GPT-4o */}
+            <div className="p-5 rounded-2xl bg-slate-800/30 border border-slate-700/50">
+              <h3 className="text-sm font-medium text-slate-400">GPT-4o</h3>
+              <div className="mt-2 mb-3">
+                <span className="text-2xl font-bold">~R0.28</span>
+                <span className="text-slate-400 text-sm">/message</span>
+              </div>
+              <p className="text-xs text-slate-400">Most capable & intelligent</p>
+            </div>
+
+            {/* Llama 3.1 8B */}
+            <div className="p-5 rounded-2xl bg-slate-800/30 border border-slate-700/50">
+              <h3 className="text-sm font-medium text-slate-400">Llama 3.1 8B</h3>
+              <div className="mt-2 mb-3">
+                <span className="text-2xl font-bold">~R0.01</span>
+                <span className="text-slate-400 text-sm">/message</span>
+              </div>
+              <p className="text-xs text-slate-400">Ultra-low cost option</p>
+            </div>
+          </div>
+
+          {/* CTA */}
+          <div className="text-center">
+            <Link href="/pricing" className="text-archi-400 hover:text-archi-300 text-sm font-medium">
+              View all models & detailed pricing →
+            </Link>
+          </div>
+
+          {/* Free to Start */}
+          <div className="mt-12 p-6 rounded-2xl bg-gradient-to-r from-archi-600/20 to-archi-500/10 border border-archi-500/30 text-center">
+            <h3 className="text-xl font-semibold mb-2">Start Free Today</h3>
+            <p className="text-slate-400 mb-4">Get $5 in free credits when you sign up. No credit card required.</p>
+            <Link 
+              href="/auth?tab=register"
+              className="inline-flex items-center gap-2 px-6 py-3 text-sm font-medium bg-archi-500 hover:bg-archi-400 text-white rounded-xl transition-all"
+            >
+              Create Free Account
+              <span>→</span>
+            </Link>
           </div>
         </div>
       </section>

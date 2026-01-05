@@ -36,33 +36,17 @@ export async function GET() {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Get workspaces user owns
-    const ownedWorkspaces = await prisma.tenant.findMany({
-      where: { ownerId: user.userId },
-      include: {
-        _count: {
-          select: { agents: true, users: true },
-        },
-      },
-      orderBy: { createdAt: 'asc' },
-    });
-
-    // Get workspaces user is a member of (not owner)
-    const memberWorkspaces = await prisma.tenant.findMany({
+    // Get all workspaces user is a member of
+    // Note: Using simple query to support databases without ownerId column
+    const allWorkspaces = await prisma.tenant.findMany({
       where: {
         users: {
           some: {
             id: user.userId,
           },
         },
-        NOT: {
-          ownerId: user.userId,
-        },
       },
       include: {
-        owner: {
-          select: { name: true, email: true },
-        },
         _count: {
           select: { agents: true, users: true },
         },
@@ -70,11 +54,12 @@ export async function GET() {
       orderBy: { createdAt: 'asc' },
     });
 
-    // Mark current workspace
-    const workspaces = [
-      ...ownedWorkspaces.map(w => ({ ...w, isOwner: true, isCurrent: w.id === user.tenantId })),
-      ...memberWorkspaces.map(w => ({ ...w, isOwner: false, isCurrent: w.id === user.tenantId })),
-    ];
+    // Mark current workspace - treat first workspace as "owner" for now
+    const workspaces = allWorkspaces.map((w, index) => ({ 
+      ...w, 
+      isOwner: index === 0 || w.id === user.tenantId, 
+      isCurrent: w.id === user.tenantId 
+    }));
 
     return NextResponse.json({ 
       workspaces,

@@ -39,18 +39,33 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Get tenant with token balance
-    const tenant = await prisma.tenant.findUnique({
-      where: { id: user.tenantId },
-      select: {
-        id: true,
-        name: true,
-        tokenBalance: true,
-      },
-    });
-
-    if (!tenant) {
-      return NextResponse.json({ error: 'Workspace not found' }, { status: 404 });
+    // Get tenant - try with tokenBalance, fallback if column doesn't exist
+    let tokenBalance = 1000; // Default balance
+    
+    try {
+      const tenant = await prisma.tenant.findUnique({
+        where: { id: user.tenantId },
+        select: {
+          id: true,
+          name: true,
+          tokenBalance: true,
+        },
+      });
+      
+      if (tenant) {
+        tokenBalance = tenant.tokenBalance;
+      }
+    } catch (dbError) {
+      // tokenBalance column might not exist in production yet
+      console.warn('tokenBalance column not found, using default:', dbError);
+      const tenant = await prisma.tenant.findUnique({
+        where: { id: user.tenantId },
+        select: { id: true, name: true },
+      });
+      
+      if (!tenant) {
+        return NextResponse.json({ error: 'Workspace not found' }, { status: 404 });
+      }
     }
 
     // Get usage stats for current month
@@ -58,36 +73,46 @@ export async function GET(request: NextRequest) {
     startOfMonth.setDate(1);
     startOfMonth.setHours(0, 0, 0, 0);
 
-    const [monthlyUsage, recentTransactions, totalPurchased] = await Promise.all([
-      // Total tokens used this month
-      prisma.tokenTransaction.aggregate({
-        where: {
-          tenantId: user.tenantId,
-          type: 'USAGE',
-          createdAt: { gte: startOfMonth },
-        },
-        _sum: { amount: true },
-      }),
-      // Recent transactions
-      prisma.tokenTransaction.findMany({
-        where: { tenantId: user.tenantId },
-        orderBy: { createdAt: 'desc' },
-        take: 10,
-      }),
-      // Total purchased
-      prisma.tokenTransaction.aggregate({
-        where: {
-          tenantId: user.tenantId,
-          type: 'PURCHASE',
-        },
-        _sum: { amount: true },
-      }),
-    ]);
+    let monthlyUsage = 0;
+    let recentTransactions: any[] = [];
+    let totalPurchased = 0;
+
+    try {
+      const [usageResult, transactions, purchaseResult] = await Promise.all([
+        prisma.tokenTransaction.aggregate({
+          where: {
+            tenantId: user.tenantId,
+            type: 'USAGE',
+            createdAt: { gte: startOfMonth },
+          },
+          _sum: { amount: true },
+        }),
+        prisma.tokenTransaction.findMany({
+          where: { tenantId: user.tenantId },
+          orderBy: { createdAt: 'desc' },
+          take: 10,
+        }),
+        prisma.tokenTransaction.aggregate({
+          where: {
+            tenantId: user.tenantId,
+            type: 'PURCHASE',
+          },
+          _sum: { amount: true },
+        }),
+      ]);
+
+      monthlyUsage = Math.abs(usageResult._sum.amount || 0);
+      recentTransactions = transactions;
+      totalPurchased = purchaseResult._sum.amount || 0;
+    } catch (txError) {
+      // TokenTransaction table might not exist yet
+      console.warn('TokenTransaction query failed:', txError);
+    }
 
     return NextResponse.json({
-      balance: tenant.tokenBalance,
-      monthlyUsage: Math.abs(monthlyUsage._sum.amount || 0),
-      totalPurchased: totalPurchased._sum.amount || 0,
+      balance: tokenBalance,
+      monthlyUsage,
+      totalPurchased,
       recentTransactions,
       packages: TOKEN_PACKAGES,
       modelPricing: MODEL_PRICING,

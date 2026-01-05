@@ -2,22 +2,33 @@
 
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import {
-  Bot,
-  Plus,
-  Settings,
-  Sparkles,
-  Save,
-  RefreshCw,
-  Info,
-  Check,
-  Trash2,
-  ChevronDown,
-  Cpu,
-  Zap,
-  DollarSign,
-  MessageSquare,
-} from 'lucide-react';
+import { 
+  HiOutlineTrash,
+  HiOutlinePlus,
+  HiOutlineSave,
+  HiOutlineCog,
+  HiOutlineChevronDown,
+  HiOutlineCheck,
+  HiOutlineInformationCircle,
+  HiOutlineLightningBolt,
+  HiOutlineChat,
+  HiOutlineSparkles,
+  HiOutlineChip,
+} from 'react-icons/hi';
+import { FaRobot } from 'react-icons/fa';
+
+// Icon aliases for cleaner JSX
+const Check = HiOutlineCheck;
+const Save = HiOutlineSave;
+const Bot = FaRobot;
+const Plus = HiOutlinePlus;
+const Settings = HiOutlineCog;
+const Sparkles = HiOutlineSparkles;
+const Info = HiOutlineInformationCircle;
+const Cpu = HiOutlineChip;
+const ChevronDown = HiOutlineChevronDown;
+const Zap = HiOutlineLightningBolt;
+const MessageSquare = HiOutlineChat;
 
 interface Agent {
   id: string;
@@ -245,7 +256,7 @@ export default function AgentConfigPageNew() {
               disabled={isDeleting}
               className="inline-flex items-center gap-2 px-4 py-2 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 rounded-lg transition-colors text-sm"
             >
-              <Trash2 className="w-4 h-4" />
+              <HiOutlineTrash className="w-4 h-4" />
               Delete
             </button>
           )}

@@ -1,11 +1,11 @@
 import { Metadata } from 'next';
-import WhatsAppSetupPage from '@/app/components/dashboard/WhatsAppSetupPage';
+import WhatsAppQuickStart from '@/app/components/dashboard/WhatsAppQuickStart';
 
 export const metadata: Metadata = {
-  title: 'WhatsApp Setup',
-  description: 'Connect your WhatsApp Business number',
+  title: 'WhatsApp Chat',
+  description: 'Chat with your AI bot on WhatsApp',
 };
 
 export default function WhatsAppPage() {
-  return <WhatsAppSetupPage />;
+  return <WhatsAppQuickStart />;
 }
