@@ -160,10 +160,20 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'Document not found' }, { status: 404 });
     }
     
-    // Delete vectors from Pinecone
-    await deleteDocumentVectors(auth.tenantId, params.id);
+    // Try to delete vectors from Pinecone (don't fail if they don't exist)
+    try {
+      await deleteDocumentVectors(auth.tenantId, params.id);
+    } catch (error) {
+      console.warn('Failed to delete vectors from Pinecone (may not exist):', error);
+      // Continue with document deletion
+    }
     
-    // Delete document (cascades to chunks)
+    // Delete chunks first
+    await prisma.documentChunk.deleteMany({
+      where: { documentId: params.id },
+    });
+    
+    // Delete document
     await prisma.document.delete({
       where: { id: params.id },
     });
