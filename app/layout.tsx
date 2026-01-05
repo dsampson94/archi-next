@@ -4,6 +4,7 @@ import './globals.css';
 import { AuthProvider } from '@/app/contexts/AuthContext';
 import { Toaster } from 'react-hot-toast';
 import JsonLd from '@/app/components/JsonLd';
+import { Analytics } from '@vercel/analytics/next';
 
 const inter = Inter({ 
   subsets: ['latin'],
@@ -158,6 +159,7 @@ export default function RootLayout({
             }}
           />
         </AuthProvider>
+        <Analytics />
       </body>
     </html>
   );
