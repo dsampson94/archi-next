@@ -264,12 +264,12 @@ export default function OnboardingWizard({ isOpen, onClose, tenantId }: Onboardi
                   Drag & drop files here, or click to browse
                 </p>
                 <p className="text-sm text-gray-500 mb-4">
-                  Supports PDF, DOCX, TXT (Max 50MB)
+                  Supports PDF, DOCX, TXT, Markdown, HTML, CSV, JSON (Max 50MB)
                 </p>
                 <input
                   type="file"
                   multiple
-                  accept=".pdf,.docx,.txt"
+                  accept=".pdf,.docx,.txt,.md,.html,.csv,.json"
                   onChange={(e) => {
                     if (e.target.files) {
                       setUploadedFiles(Array.from(e.target.files));
@@ -286,8 +286,18 @@ export default function OnboardingWizard({ isOpen, onClose, tenantId }: Onboardi
                 </label>
               </div>
 
+              {/* No files selected - show skip option */}
+              {uploadedFiles.length === 0 && (
+                <button
+                  onClick={handleNext}
+                  className="w-full px-6 py-3 border-2 border-gray-300 text-gray-600 rounded-lg hover:bg-gray-50 font-medium flex items-center justify-center gap-2"
+                >
+                  Skip for now — I'll add documents later
+                </button>
+              )}
+
               {uploadedFiles.length > 0 && (
-                <div className="space-y-2">
+                <div className="space-y-3">
                   <p className="text-sm font-medium text-gray-700">
                     {uploadedFiles.length} file(s) selected:
                   </p>
@@ -307,6 +317,15 @@ export default function OnboardingWizard({ isOpen, onClose, tenantId }: Onboardi
                       </button>
                     </div>
                   ))}
+                  
+                  {/* Proceed Button - shown after file selection */}
+                  <button
+                    onClick={handleNext}
+                    className="w-full mt-4 px-6 py-4 bg-teal-600 text-white rounded-lg hover:bg-teal-700 font-semibold text-lg flex items-center justify-center gap-2 shadow-lg hover:shadow-xl transition-all"
+                  >
+                    <Check size={20} />
+                    Proceed with {uploadedFiles.length} Document{uploadedFiles.length > 1 ? 's' : ''}
+                  </button>
                 </div>
               )}
 
