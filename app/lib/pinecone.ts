@@ -22,6 +22,7 @@ export interface VectorMetadata extends RecordMetadata {
   documentTitle: string;
   pageNumber?: number;
   tenantId: string;
+  knowledgeBaseId?: string;
   [key: string]: any;
 }
 

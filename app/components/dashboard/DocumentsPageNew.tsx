@@ -383,11 +383,11 @@ export default function DocumentsPage() {
 
                     {/* Actions */}
                     <div className="flex items-center gap-1">
-                      {doc.status === 'FAILED' && (
+                      {(doc.status === 'FAILED' || doc.status === 'PROCESSING') && (
                         <button
                           onClick={() => handleReprocess(doc.id)}
                           className="p-2 hover:bg-slate-700 rounded-lg transition-colors"
-                          title="Retry processing"
+                          title={doc.status === 'FAILED' ? 'Retry processing' : 'Restart processing'}
                         >
                           <HiOutlineRefresh className="w-4 h-4 text-slate-400" />
                         </button>

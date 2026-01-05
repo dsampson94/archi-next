@@ -105,6 +105,7 @@ export async function processDocument(
           documentTitle: document.title,
           pageNumber: chunk.pageNumber,
           tenantId: document.tenantId,
+          knowledgeBaseId: document.knowledgeBaseId || '', // For filtering by KB
         },
       });
     }

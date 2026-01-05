@@ -19,19 +19,47 @@ export async function GET(request: NextRequest) {
   try {
     // Find pending documents (not older than 24 hours to avoid processing stuck ones forever)
     const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
     
+    // Find documents that are:
+    // 1. PENDING status (new uploads)
+    // 2. PROCESSING status but updated more than 10 minutes ago (stuck documents)
     const pendingDocuments = await prisma.document.findMany({
       where: {
-        status: 'PENDING',
-        createdAt: {
-          gte: oneDayAgo,
-        },
+        OR: [
+          {
+            status: 'PENDING',
+            createdAt: {
+              gte: oneDayAgo,
+            },
+          },
+          {
+            status: 'PROCESSING',
+            updatedAt: {
+              lt: tenMinutesAgo,
+            },
+            createdAt: {
+              gte: oneDayAgo,
+            },
+          },
+        ],
       },
       orderBy: {
         createdAt: 'asc',
       },
       take: 5, // Process 5 at a time to avoid timeout
     });
+    
+    // Reset stuck PROCESSING documents back to PENDING
+    for (const doc of pendingDocuments) {
+      if (doc.status === 'PROCESSING') {
+        console.log(`[Cron] Resetting stuck document ${doc.id} from PROCESSING to PENDING`);
+        await prisma.document.update({
+          where: { id: doc.id },
+          data: { status: 'PENDING' },
+        });
+      }
+    }
     
     console.log(`[Cron] Found ${pendingDocuments.length} pending documents to process`);
     

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/app/lib/prisma';
-import { queryRAG, getAgentConfig, logQuery } from '@/app/lib/rag';
+import { queryAgent, getDefaultAgent } from '@/app/lib/agent-rag';
 import { transcribeAudio } from '@/app/lib/openai';
 import crypto from 'crypto';
 
@@ -135,21 +135,24 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    // Get agent configuration
-    const agentConfig = await getAgentConfig(conversation.tenantId);
-    const systemPrompt = agentConfig?.systemPrompt || conversation.agent?.systemPrompt || 
-      'You are a helpful assistant. Answer questions based on the provided context.';
+    // Get agent configuration (prefer conversation's agent, otherwise tenant default)
+    const agentId = conversation.agentId || (await getDefaultAgent(conversation.tenantId))?.id;
+    
+    if (!agentId) {
+      console.error(`[WhatsApp] No agent configured for tenant ${conversation.tenantId}`);
+      return new NextResponse('No agent configured', { status: 500 });
+    }
 
-    // Generate AI response using RAG pipeline
-    const aiResponse = await queryRAG(
+    // Generate AI response using agent-aware RAG pipeline
+    // This will:
+    // 1. Use only the agent's linked knowledge bases
+    // 2. Use the agent's configured LLM model
+    // 3. Save the conversation for future learning
+    const aiResponse = await queryAgent(
       conversation.tenantId,
+      agentId,
       processedContent,
-      systemPrompt,
-      {
-        confidenceThreshold: agentConfig?.confidenceThreshold || 0.7,
-        temperature: agentConfig?.temperature || 0.7,
-        model: agentConfig?.model || 'gpt-4-turbo-preview',
-      }
+      conversation.id
     );
 
     // Store the AI response
@@ -177,14 +180,8 @@ export async function POST(request: NextRequest) {
         },
       });
 
-      // Append handoff message if confidence is very low
-      if (aiResponse.confidence < 0.5 && agentConfig?.fallbackMessage) {
-        aiResponse.content += `\n\n${agentConfig.fallbackMessage}`;
-      }
+      // Note: Handoff message is now included in the agent's response via agent-rag.ts
     }
-
-    // Log query for analytics
-    await logQuery(conversation.tenantId, conversation.id, processedContent, aiResponse);
 
     // Send response via Twilio
     const twiml = `<?xml version="1.0" encoding="UTF-8"?>
