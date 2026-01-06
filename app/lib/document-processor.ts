@@ -41,12 +41,14 @@ export async function processDocument(
     });
     
     // Extract text based on file type
+    // PRIORITY: Use existing rawContent if available (already extracted during upload)
     let rawContent: string;
     
-    if (document.fileUrl) {
-      rawContent = await extractTextFromUrl(document.fileUrl, document.fileType);
-    } else if (document.rawContent) {
+    if (document.rawContent) {
+      console.log(`[DocumentProcessor] Using existing rawContent (${document.rawContent.length} chars)`);
       rawContent = document.rawContent;
+    } else if (document.fileUrl) {
+      rawContent = await extractTextFromUrl(document.fileUrl, document.fileType);
     } else {
       throw new Error('No content available for processing');
     }
