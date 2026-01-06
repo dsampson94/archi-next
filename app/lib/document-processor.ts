@@ -2,6 +2,7 @@ import { prisma } from '@/app/lib/prisma';
 import { generateEmbeddings } from '@/app/lib/openai';
 import { upsertVectors, deleteDocumentVectors, type VectorMetadata } from '@/app/lib/pinecone';
 import { downloadFile, extractKeyFromUrl } from '@/app/lib/s3';
+import { processWithVision, shouldUseVision } from '@/app/lib/vision-processor';
 import pdf from 'pdf-parse';
 
 // Chunking configuration
@@ -44,13 +45,49 @@ export async function processDocument(
     // PRIORITY: Use existing rawContent if available (already extracted during upload)
     let rawContent: string;
     
-    if (document.rawContent) {
+    if (document.rawContent && document.rawContent.length > 100) {
+      // Use existing content if it's substantial
       console.log(`[DocumentProcessor] Using existing rawContent (${document.rawContent.length} chars)`);
       rawContent = document.rawContent;
-    } else if (document.fileUrl) {
-      rawContent = await extractTextFromUrl(document.fileUrl, document.fileType);
     } else {
-      throw new Error('No content available for processing');
+      // Need to extract content from file
+      let buffer: Buffer | null = null;
+      
+      // Get the file buffer
+      if (document.fileUrl) {
+        const s3Key = extractKeyFromUrl(document.fileUrl);
+        if (s3Key) {
+          console.log(`[DocumentProcessor] Downloading from S3: ${s3Key}`);
+          buffer = await downloadFile(s3Key);
+        } else if (document.fileUrl.startsWith('data:')) {
+          const matches = document.fileUrl.match(/^data:[^;]+;base64,(.+)$/);
+          if (matches) {
+            buffer = Buffer.from(matches[1], 'base64');
+          }
+        }
+      }
+      
+      if (!buffer) {
+        throw new Error('No content available for processing');
+      }
+      
+      // Use GPT-4 Vision for PDFs (understands images, charts, tables)
+      if (shouldUseVision(document.fileType)) {
+        console.log(`[DocumentProcessor] Using GPT-4 Vision for ${document.fileType}`);
+        const visionResult = await processWithVision(buffer, document.fileType, document.title);
+        
+        if (visionResult.success && visionResult.content.length > 0) {
+          rawContent = visionResult.content;
+          console.log(`[DocumentProcessor] Vision extracted ${rawContent.length} chars with ${visionResult.pages.length} pages`);
+        } else {
+          // Fallback to basic text extraction
+          console.log(`[DocumentProcessor] Vision failed, falling back to basic extraction: ${visionResult.error}`);
+          rawContent = await extractTextFromBuffer(buffer, document.fileType);
+        }
+      } else {
+        // Use basic extraction for text files
+        rawContent = await extractTextFromBuffer(buffer, document.fileType);
+      }
     }
     
     // Chunk the content
