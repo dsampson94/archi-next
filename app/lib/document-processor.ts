@@ -1,6 +1,7 @@
 import { prisma } from '@/app/lib/prisma';
 import { generateEmbeddings } from '@/app/lib/openai';
 import { upsertVectors, deleteDocumentVectors, type VectorMetadata } from '@/app/lib/pinecone';
+import { downloadFile, extractKeyFromUrl } from '@/app/lib/s3';
 import pdf from 'pdf-parse';
 
 // Chunking configuration
@@ -152,41 +153,49 @@ export async function processDocument(
 
 /**
  * Extract text from a file URL based on file type
+ * Uses S3 client to download files directly (handles private buckets)
  */
 async function extractTextFromUrl(url: string, fileType: string): Promise<string> {
-  const response = await fetch(url);
+  // Try to extract S3 key from URL and download directly
+  const s3Key = extractKeyFromUrl(url);
   
-  if (!response.ok) {
-    throw new Error(`Failed to fetch file: ${response.statusText}`);
-  }
+  let buffer: Buffer;
   
-  switch (fileType) {
-    case 'PDF': {
-      const buffer = Buffer.from(await response.arrayBuffer());
-      const data = await pdf(buffer);
-      return data.text;
+  if (s3Key) {
+    // Download from S3 directly (works with private buckets)
+    console.log(`[DocumentProcessor] Downloading from S3: ${s3Key}`);
+    try {
+      buffer = await downloadFile(s3Key);
+    } catch (error) {
+      console.error(`[DocumentProcessor] S3 download failed, trying URL fetch:`, error);
+      // Fallback to URL fetch for backwards compatibility
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch file: ${response.statusText}`);
+      }
+      buffer = Buffer.from(await response.arrayBuffer());
     }
-    
-    case 'TXT':
-    case 'MD':
-    case 'HTML': {
-      return await response.text();
+  } else {
+    // Handle data URLs or external URLs
+    if (url.startsWith('data:')) {
+      // Extract base64 data from data URL
+      const matches = url.match(/^data:[^;]+;base64,(.+)$/);
+      if (!matches) {
+        throw new Error('Invalid data URL format');
+      }
+      buffer = Buffer.from(matches[1], 'base64');
+    } else {
+      // External URL - fetch directly
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch file: ${response.statusText}`);
+      }
+      buffer = Buffer.from(await response.arrayBuffer());
     }
-    
-    case 'DOCX': {
-      // For DOCX, we'd need mammoth or similar library
-      // For now, throw an error to indicate it's not supported yet
-      throw new Error('DOCX processing not yet implemented. Please upload as PDF or TXT.');
-    }
-    
-    case 'JSON': {
-      const json = await response.json();
-      return JSON.stringify(json, null, 2);
-    }
-    
-    default:
-      throw new Error(`Unsupported file type: ${fileType}`);
   }
+
+  // Now extract text from buffer based on file type
+  return extractTextFromBuffer(buffer, fileType);
 }
 
 /**

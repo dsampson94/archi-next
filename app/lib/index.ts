@@ -23,7 +23,6 @@ export {
 
 // OpenAI services
 export {
-  openai,
   generateEmbedding,
   generateEmbeddings,
   generateChatCompletion,

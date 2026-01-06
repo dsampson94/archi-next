@@ -1,25 +1,43 @@
 import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
-// Check if S3 is configured
-const isS3Configured = !!(
-  process.env.S3_ACCESS_KEY_ID &&
-  process.env.S3_SECRET_ACCESS_KEY &&
-  process.env.S3_BUCKET_NAME
-);
+// Lazy-initialized S3 client
+let s3ClientInstance: S3Client | null = null;
+let s3Checked = false;
+let s3IsConfigured = false;
 
-// Initialize S3 client - works with AWS S3, Cloudflare R2, or any S3-compatible storage
-const s3Client = isS3Configured ? new S3Client({
-  region: process.env.S3_REGION || 'auto',
-  endpoint: process.env.S3_ENDPOINT, // For R2: https://<account_id>.r2.cloudflarestorage.com
-  credentials: {
-    accessKeyId: process.env.S3_ACCESS_KEY_ID || '',
-    secretAccessKey: process.env.S3_SECRET_ACCESS_KEY || '',
-  },
-  forcePathStyle: true, // Required for some S3-compatible services
-}) : null;
+function getS3Client(): S3Client | null {
+  if (!s3Checked) {
+    s3IsConfigured = !!(
+      process.env.S3_ACCESS_KEY_ID &&
+      process.env.S3_SECRET_ACCESS_KEY &&
+      process.env.S3_BUCKET_NAME
+    );
+    s3Checked = true;
+  }
+  
+  if (!s3IsConfigured) {
+    return null;
+  }
+  
+  if (!s3ClientInstance) {
+    s3ClientInstance = new S3Client({
+      region: process.env.S3_REGION || 'auto',
+      endpoint: process.env.S3_ENDPOINT, // For R2: https://<account_id>.r2.cloudflarestorage.com
+      credentials: {
+        accessKeyId: process.env.S3_ACCESS_KEY_ID || '',
+        secretAccessKey: process.env.S3_SECRET_ACCESS_KEY || '',
+      },
+      forcePathStyle: true, // Required for some S3-compatible services
+    });
+  }
+  
+  return s3ClientInstance;
+}
 
-const BUCKET_NAME = process.env.S3_BUCKET_NAME || 'archi-documents';
+function getBucketName(): string {
+  return process.env.S3_BUCKET_NAME || 'archi-documents';
+}
 
 export interface UploadResult {
   key: string;
@@ -31,7 +49,8 @@ export interface UploadResult {
  * Check if S3 storage is available
  */
 export function isStorageConfigured(): boolean {
-  return isS3Configured;
+  getS3Client(); // Trigger check
+  return s3IsConfigured;
 }
 
 /**
@@ -77,6 +96,9 @@ export async function uploadFile(
   key: string,
   contentType: string
 ): Promise<UploadResult> {
+  const s3Client = getS3Client();
+  const BUCKET_NAME = getBucketName();
+  
   // If S3 is not configured, store as base64 data URL (fallback for development)
   if (!s3Client) {
     console.warn('S3 not configured - using data URL fallback (not recommended for production)');
@@ -123,6 +145,9 @@ export async function uploadFile(
  * Get a signed URL for a file (expires in 1 hour by default)
  */
 export async function getFileUrl(key: string, expiresIn: number = 3600): Promise<string> {
+  const s3Client = getS3Client();
+  const BUCKET_NAME = getBucketName();
+  
   // If S3 is not configured, return empty string (data URL should be stored in DB)
   if (!s3Client) {
     return '';
@@ -146,6 +171,9 @@ export async function getFileUrl(key: string, expiresIn: number = 3600): Promise
  * Delete a file from S3
  */
 export async function deleteFile(key: string): Promise<void> {
+  const s3Client = getS3Client();
+  const BUCKET_NAME = getBucketName();
+  
   if (!s3Client) {
     console.warn('S3 not configured - skipping delete');
     return;
@@ -157,6 +185,65 @@ export async function deleteFile(key: string): Promise<void> {
   });
 
   await s3Client.send(command);
+}
+
+/**
+ * Download a file from S3 as a Buffer
+ */
+export async function downloadFile(key: string): Promise<Buffer> {
+  const s3Client = getS3Client();
+  const BUCKET_NAME = getBucketName();
+  
+  if (!s3Client) {
+    throw new Error('S3 not configured');
+  }
+
+  const command = new GetObjectCommand({
+    Bucket: BUCKET_NAME,
+    Key: key,
+  });
+
+  const response = await s3Client.send(command);
+  
+  if (!response.Body) {
+    throw new Error('No body in S3 response');
+  }
+
+  // Convert the readable stream to a buffer
+  const chunks: Uint8Array[] = [];
+  for await (const chunk of response.Body as AsyncIterable<Uint8Array>) {
+    chunks.push(chunk);
+  }
+  return Buffer.concat(chunks);
+}
+
+/**
+ * Extract the S3 key from a stored URL
+ * Handles both signed URLs and public URLs
+ */
+export function extractKeyFromUrl(url: string): string | null {
+  if (!url) return null;
+  
+  // Handle data URLs (not S3)
+  if (url.startsWith('data:')) return null;
+  
+  const BUCKET_NAME = getBucketName();
+  try {
+    const urlObj = new URL(url);
+    // Remove leading slash from pathname
+    let key = urlObj.pathname.replace(/^\//, '');
+    
+    // If it's an R2 URL, the bucket name might be in the path
+    // Format: /bucket-name/path/to/file
+    // We need just: path/to/file
+    if (key.startsWith(BUCKET_NAME + '/')) {
+      key = key.substring(BUCKET_NAME.length + 1);
+    }
+    
+    return key || null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -190,6 +277,9 @@ export async function getPresignedUploadUrl(
     expiresIn?: number;
   }
 ): Promise<{ uploadUrl: string; key: string }> {
+  const s3Client = getS3Client();
+  const BUCKET_NAME = getBucketName();
+  
   if (!s3Client) {
     throw new Error('S3 storage not configured');
   }
@@ -211,4 +301,5 @@ export async function getPresignedUploadUrl(
   return { uploadUrl, key };
 }
 
-export { s3Client, BUCKET_NAME };
+// Export getter functions instead of direct clients
+export { getS3Client, getBucketName };

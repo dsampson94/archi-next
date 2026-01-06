@@ -1,9 +1,18 @@
 import OpenAI from 'openai';
 
-// Initialize OpenAI client
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+// Lazy-initialized OpenAI client
+let openaiInstance: OpenAI | null = null;
+
+function getOpenAI(): OpenAI {
+  if (!openaiInstance) {
+    const apiKey = process.env.OPENAI_API_KEY;
+    if (!apiKey) {
+      throw new Error('OPENAI_API_KEY environment variable is not set');
+    }
+    openaiInstance = new OpenAI({ apiKey });
+  }
+  return openaiInstance;
+}
 
 // Embedding model - text-embedding-3-small is cost-effective and performant
 const EMBEDDING_MODEL = 'text-embedding-3-small';
@@ -13,6 +22,7 @@ const EMBEDDING_DIMENSIONS = 1536;
  * Generate embedding for a single text
  */
 export async function generateEmbedding(text: string): Promise<number[]> {
+  const openai = getOpenAI();
   const response = await openai.embeddings.create({
     model: EMBEDDING_MODEL,
     input: text,
@@ -33,6 +43,7 @@ export async function generateEmbeddings(texts: string[]): Promise<number[][]> {
   const batchSize = 100;
   const allEmbeddings: number[][] = [];
   
+  const openai = getOpenAI();
   for (let i = 0; i < texts.length; i += batchSize) {
     const batch = texts.slice(i, i + batchSize);
     
@@ -67,6 +78,7 @@ export async function generateChatCompletion(
   tokensUsed: number;
   model: string;
 }> {
+  const openai = getOpenAI();
   const model = options?.model || 'gpt-4-turbo-preview';
   
   const response = await openai.chat.completions.create({
@@ -110,6 +122,7 @@ export async function transcribeAudio(
   audioBuffer: Buffer,
   filename: string = 'audio.ogg'
 ): Promise<string> {
+  const openai = getOpenAI();
   // Create a File object from the buffer using Uint8Array
   const uint8Array = new Uint8Array(audioBuffer);
   const file = new File([uint8Array], filename, { type: 'audio/ogg' });
@@ -146,4 +159,4 @@ export function calculateConfidence(
   return Math.min(1, normalizedScore + countBonus);
 }
 
-export { openai, EMBEDDING_MODEL, EMBEDDING_DIMENSIONS };
+export { EMBEDDING_MODEL, EMBEDDING_DIMENSIONS };
