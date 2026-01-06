@@ -78,12 +78,12 @@ export default function DocumentUpload({ onUploadComplete, knowledgeBaseId }: Do
       const file = files[i];
       if (file.status === 'success') continue;
 
-      // Update status to uploading
-      setFiles((prev) => 
-        prev.map((f, idx) => 
-          idx === i ? { ...f, status: 'uploading' as const, progress: 0 } : f
-        )
-      );
+      // Update status to uploading - mutate in place and trigger re-render
+      setFiles((prev) => {
+        prev[i].status = 'uploading';
+        prev[i].progress = 0;
+        return [...prev];
+      });
 
       try {
         const formData = new FormData();
@@ -107,22 +107,18 @@ export default function DocumentUpload({ onUploadComplete, knowledgeBaseId }: Do
         hasAnySuccess = true;
 
         // Update status to success
-        setFiles((prev) => 
-          prev.map((f, idx) => 
-            idx === i ? { ...f, status: 'success' as const, progress: 100 } : f
-          )
-        );
+        setFiles((prev) => {
+          prev[i].status = 'success';
+          prev[i].progress = 100;
+          return [...prev];
+        });
       } catch (error) {
         // Update status to error
-        setFiles((prev) => 
-          prev.map((f, idx) => 
-            idx === i ? { 
-              ...f, 
-              status: 'error' as const, 
-              error: error instanceof Error ? error.message : 'Upload failed' 
-            } : f
-          )
-        );
+        setFiles((prev) => {
+          prev[i].status = 'error';
+          prev[i].error = error instanceof Error ? error.message : 'Upload failed';
+          return [...prev];
+        });
       }
     }
 
