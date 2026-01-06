@@ -71,23 +71,43 @@ export async function GET(request: NextRequest) {
       where.knowledgeBaseId = knowledgeBaseId;
     }
     
-    const [documents, total] = await Promise.all([
-      prisma.document.findMany({
-        where,
-        orderBy: { createdAt: 'desc' },
-        skip: (page - 1) * limit,
-        take: limit,
-        include: {
-          knowledgeBase: {
-            select: { id: true, name: true },
+    // Add timeout wrapper for database queries
+    const queryTimeout = 8000; // 8 seconds
+    const timeoutPromise = new Promise((_, reject) => 
+      setTimeout(() => reject(new Error('Database query timeout')), queryTimeout)
+    );
+    
+    const [documents, total] = await Promise.race([
+      Promise.all([
+        prisma.document.findMany({
+          where,
+          orderBy: { createdAt: 'desc' },
+          skip: (page - 1) * limit,
+          take: limit,
+          select: {
+            id: true,
+            title: true,
+            fileName: true,
+            fileType: true,
+            fileSize: true,
+            status: true,
+            chunkCount: true,
+            errorMessage: true,
+            tags: true,
+            createdAt: true,
+            updatedAt: true,
+            knowledgeBase: {
+              select: { id: true, name: true },
+            },
+            uploadedBy: {
+              select: { id: true, name: true },
+            },
           },
-          uploadedBy: {
-            select: { id: true, name: true },
-          },
-        },
-      }),
-      prisma.document.count({ where }),
-    ]);
+        }),
+        prisma.document.count({ where }),
+      ]),
+      timeoutPromise,
+    ]) as [unknown[], number];
     
     return NextResponse.json({
       documents,
@@ -223,11 +243,8 @@ export async function POST(request: NextRequest) {
         },
       });
       
-      // Start processing in background
-      // In production, this should be a queue job
-      processDocument(document.id).catch((error) => {
-        console.error(`[Document] Background processing error for ${document.id}:`, error);
-      });
+      // Note: Processing happens via cron job every 5 minutes
+      // For immediate processing, use POST /api/documents/:id/retry endpoint
       
       return NextResponse.json({
         success: true,
@@ -237,7 +254,7 @@ export async function POST(request: NextRequest) {
           fileName: document.fileName,
           status: document.status,
         },
-        message: 'Document uploaded successfully. Processing started.',
+        message: 'Document uploaded successfully. Processing will begin shortly via background job.',
       });
     }
     

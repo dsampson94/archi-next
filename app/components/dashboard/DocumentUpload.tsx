@@ -49,9 +49,12 @@ export default function DocumentUpload({ onUploadComplete, knowledgeBaseId }: Do
   const [isUploading, setIsUploading] = useState(false);
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
-    const newFiles = acceptedFiles.map((file) => 
-      Object.assign(file, { status: 'pending' as const, progress: 0 })
-    );
+    const newFiles: FileWithPreview[] = acceptedFiles.map((file) => {
+      const fileWithStatus = file as FileWithPreview;
+      fileWithStatus.status = 'pending';
+      fileWithStatus.progress = 0;
+      return fileWithStatus;
+    });
     setFiles((prev) => [...prev, ...newFiles]);
   }, []);
 

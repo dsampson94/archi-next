@@ -103,6 +103,7 @@ export default function DocumentsPage() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
   const [pagination, setPagination] = useState({ page: 1, totalPages: 1, total: 0 });
   const [isPolling, setIsPolling] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
 
   const fetchDocuments = useCallback(async (silent = false) => {
     if (!silent) setIsLoading(true);
@@ -219,6 +220,28 @@ export default function DocumentsPage() {
     }
   };
 
+  const handleTriggerProcessing = async () => {
+    setIsProcessing(true);
+    try {
+      const response = await fetch('/api/cron/process-documents', {
+        credentials: 'include',
+      });
+      
+      if (response.ok) {
+        // Wait a moment then refresh
+        setTimeout(() => {
+          fetchDocuments();
+          setIsProcessing(false);
+        }, 1000);
+      } else {
+        setIsProcessing(false);
+      }
+    } catch (error) {
+      console.error('Failed to trigger processing:', error);
+      setIsProcessing(false);
+    }
+  };
+
   const filteredDocuments = documents.filter((doc) => {
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
@@ -249,13 +272,25 @@ export default function DocumentsPage() {
             Manage your knowledge base documents
           </p>
         </div>
-        <button
-          onClick={() => setShowUploadModal(true)}
-          className="inline-flex items-center gap-2 px-4 py-2.5 bg-archi-500 hover:bg-archi-400 text-white rounded-lg transition-colors font-medium"
-        >
-          <HiOutlinePlus className="w-5 h-5" />
-          Upload Documents
-        </button>
+        <div className="flex gap-2">
+          {documents.some((d) => d.status === 'PENDING' || d.status === 'PROCESSING') && (
+            <button
+              onClick={handleTriggerProcessing}
+              disabled={isProcessing}
+              className="inline-flex items-center gap-2 px-4 py-2.5 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded-lg transition-colors font-medium disabled:opacity-50"
+            >
+              <HiOutlineRefresh className={`w-5 h-5 ${isProcessing ? 'animate-spin' : ''}`} />
+              {isProcessing ? 'Processing...' : 'Process Now'}
+            </button>
+          )}
+          <button
+            onClick={() => setShowUploadModal(true)}
+            className="inline-flex items-center gap-2 px-4 py-2.5 bg-archi-500 hover:bg-archi-400 text-white rounded-lg transition-colors font-medium"
+          >
+            <HiOutlinePlus className="w-5 h-5" />
+            Upload Documents
+          </button>
+        </div>
       </div>
 
       {/* Filters */}
