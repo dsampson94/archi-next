@@ -69,6 +69,7 @@ export default function DocumentUpload({ onUploadComplete, knowledgeBaseId }: Do
     if (files.length === 0) return;
     
     setIsUploading(true);
+    let hasAnySuccess = false;
 
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
@@ -100,6 +101,8 @@ export default function DocumentUpload({ onUploadComplete, knowledgeBaseId }: Do
           throw new Error(error.error || 'Upload failed');
         }
 
+        hasAnySuccess = true;
+
         // Update status to success
         setFiles((prev) => 
           prev.map((f, idx) => 
@@ -122,9 +125,8 @@ export default function DocumentUpload({ onUploadComplete, knowledgeBaseId }: Do
 
     setIsUploading(false);
     
-    // Check if all succeeded
-    const allSuccess = files.every((f) => f.status === 'success');
-    if (allSuccess && onUploadComplete) {
+    // Trigger refresh if any uploads succeeded
+    if (hasAnySuccess && onUploadComplete) {
       onUploadComplete();
     }
   };
