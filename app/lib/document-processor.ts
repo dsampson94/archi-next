@@ -73,26 +73,25 @@ export async function processDocument(
       where: { documentId },
     });
     
-    // Create new chunks
+    // Prepare all chunks and vectors in memory first
+    const chunkData = [];
+    
     for (let i = 0; i < chunks.length; i++) {
       const chunk = chunks[i];
       const chunkId = `${documentId}_chunk_${i}`;
       
-      // Store in database
-      await prisma.documentChunk.create({
-        data: {
-          id: chunkId,
-          documentId,
-          content: chunk.content,
-          chunkIndex: i,
-          pageNumber: chunk.pageNumber,
-          startChar: chunk.startChar,
-          endChar: chunk.endChar,
-          embedding: embeddings[i],
-          metadata: {
-            title: document.title,
-            fileName: document.fileName,
-          },
+      chunkData.push({
+        id: chunkId,
+        documentId,
+        content: chunk.content,
+        chunkIndex: i,
+        pageNumber: chunk.pageNumber,
+        startChar: chunk.startChar,
+        endChar: chunk.endChar,
+        embedding: embeddings[i],
+        metadata: {
+          title: document.title,
+          fileName: document.fileName,
         },
       });
       
@@ -112,6 +111,12 @@ export async function processDocument(
         },
       });
     }
+    
+    // Batch create all chunks at once
+    await prisma.documentChunk.createMany({
+      data: chunkData,
+    });
+    console.log(`[DocumentProcessor] Created ${chunkData.length} chunks in DB`);
     
     // Upsert to Pinecone
     await upsertVectors(document.tenantId, vectors);
