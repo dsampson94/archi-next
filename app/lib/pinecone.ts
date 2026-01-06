@@ -1,14 +1,23 @@
 import { Pinecone, RecordMetadata } from '@pinecone-database/pinecone';
 
-// Initialize Pinecone client
-const pinecone = new Pinecone({
-  apiKey: process.env.PINECONE_API_KEY || '',
-});
+// Lazy-initialized Pinecone client
+let pineconeInstance: Pinecone | null = null;
+
+function getPinecone(): Pinecone {
+  if (!pineconeInstance) {
+    const apiKey = process.env.PINECONE_API_KEY;
+    if (!apiKey) {
+      throw new Error('PINECONE_API_KEY environment variable is not set');
+    }
+    pineconeInstance = new Pinecone({ apiKey });
+  }
+  return pineconeInstance;
+}
 
 // Get the index for document embeddings
 export const getIndex = () => {
   const indexName = process.env.PINECONE_INDEX || 'archi-docs';
-  return pinecone.index(indexName);
+  return getPinecone().index(indexName);
 };
 
 // Namespace format: tenant_{tenantId}
@@ -116,5 +125,3 @@ export async function deleteTenantVectors(tenantId: string): Promise<void> {
   
   console.log(`[Pinecone] Deleted all vectors for tenant ${tenantId}`);
 }
-
-export { pinecone };

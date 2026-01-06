@@ -10,7 +10,6 @@
 
 // Pinecone vector database
 export {
-  pinecone,
   getIndex,
   getTenantNamespace,
   upsertVectors,
